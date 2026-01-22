@@ -45,7 +45,7 @@ function sanitize($data) {
 
 // Format currency
 function formatCurrency($amount) {
-    return '$' . number_format($amount, 2);
+    return 'RM ' . number_format($amount, 2);
 }
 
 // Format date

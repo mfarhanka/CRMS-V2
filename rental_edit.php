@@ -120,7 +120,7 @@ include 'includes/header.php';
                         </div>
                         
                         <div class="col-md-6 mb-3">
-                            <label for="amount_paid" class="form-label">Amount Paid ($)</label>
+                            <label for="amount_paid" class="form-label">Amount Paid (RM)</label>
                             <input type="number" class="form-control" id="amount_paid" name="amount_paid" 
                                    step="0.01" min="0" max="<?php echo $rental['total_amount']; ?>" 
                                    value="<?php echo $rental['amount_paid']; ?>">

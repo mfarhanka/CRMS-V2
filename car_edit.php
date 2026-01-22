@@ -117,7 +117,7 @@ include 'includes/header.php';
                     
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label for="daily_rate" class="form-label">Daily Rate ($) <span class="text-danger">*</span></label>
+                            <label for="daily_rate" class="form-label">Daily Rate (RM) <span class="text-danger">*</span></label>
                             <input type="number" class="form-control" id="daily_rate" name="daily_rate" step="0.01" min="0" value="<?php echo $car['daily_rate']; ?>" required>
                         </div>
                         

@@ -6,6 +6,31 @@ $page_title = 'Rentals Management';
 $conn = getDBConnection();
 $user_id = $_SESSION['user_id'];
 
+// Handle duplicate
+if (isset($_GET['duplicate'])) {
+    $rental_id = intval($_GET['duplicate']);
+    
+    // Get rental details
+    if (isAdmin()) {
+        $dup_result = $conn->query("SELECT * FROM rentals WHERE id = $rental_id");
+    } else {
+        $dup_result = $conn->query("SELECT * FROM rentals WHERE id = $rental_id AND user_id = $user_id");
+    }
+    
+    if ($dup_result->num_rows > 0) {
+        $dup_rental = $dup_result->fetch_assoc();
+        
+        // Insert duplicated rental with status as active
+        $stmt = $conn->prepare("INSERT INTO rentals (user_id, car_id, customer_id, start_date, end_date, total_days, daily_rate, total_amount, payment_status, amount_paid, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 'active', ?)");
+        $stmt->bind_param("iiissiids", $dup_rental['user_id'], $dup_rental['car_id'], $dup_rental['customer_id'], $dup_rental['start_date'], $dup_rental['end_date'], $dup_rental['total_days'], $dup_rental['daily_rate'], $dup_rental['total_amount'], $dup_rental['notes']);
+        $stmt->execute();
+        $stmt->close();
+    }
+    
+    header('Location: rentals.php');
+    exit();
+}
+
 // Handle delete
 if (isset($_GET['delete'])) {
     $rental_id = intval($_GET['delete']);
@@ -111,14 +136,18 @@ include 'includes/header.php';
                             <span class="badge <?php echo $status_class; ?>"><?php echo ucfirst($rental['status']); ?></span>
                         </td>
                         <td>
-                            <a href="rental_view.php?id=<?php echo $rental['id']; ?>" class="btn btn-sm btn-outline-info">
+                            <a href="rental_view.php?id=<?php echo $rental['id']; ?>" class="btn btn-sm btn-outline-info" title="View">
                                 <i class="bi bi-eye"></i>
                             </a>
-                            <a href="rental_edit.php?id=<?php echo $rental['id']; ?>" class="btn btn-sm btn-outline-dark">
+                            <a href="rental_edit.php?id=<?php echo $rental['id']; ?>" class="btn btn-sm btn-outline-dark" title="Edit">
                                 <i class="bi bi-pencil"></i>
                             </a>
+                            <a href="rentals.php?duplicate=<?php echo $rental['id']; ?>" class="btn btn-sm btn-outline-success" title="Duplicate"
+                               onclick="return confirm('Create a duplicate of this rental?');">
+                                <i class="bi bi-files"></i>
+                            </a>
                             <?php if ($rental['status'] != 'completed'): ?>
-                            <a href="rentals.php?delete=<?php echo $rental['id']; ?>" class="btn btn-sm btn-outline-danger" 
+                            <a href="rentals.php?delete=<?php echo $rental['id']; ?>" class="btn btn-sm btn-outline-danger" title="Delete"
                                onclick="return confirm('Are you sure you want to delete this rental?');">
                                 <i class="bi bi-trash"></i>
                             </a>

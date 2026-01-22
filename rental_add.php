@@ -162,7 +162,7 @@ include 'includes/header.php';
                         </div>
                         
                         <div class="col-md-6 mb-3">
-                            <label for="amount_paid" class="form-label">Amount Paid ($)</label>
+                            <label for="amount_paid" class="form-label">Amount Paid (RM)</label>
                             <input type="number" class="form-control" id="amount_paid" name="amount_paid" step="0.01" min="0" value="0">
                         </div>
                     </div>
@@ -191,11 +191,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const carSelect = document.getElementById('car_id');
     const startDate = document.getElementById('start_date');
     const endDate = document.getElementById('end_date');
-    
-    // Set minimum date to today
-    const today = new Date().toISOString().split('T')[0];
-    startDate.min = today;
-    endDate.min = today;
     
     function calculateTotal() {
         const selectedCar = carSelect.options[carSelect.selectedIndex];
