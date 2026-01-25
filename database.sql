@@ -47,6 +47,14 @@ CREATE TABLE IF NOT EXISTS customers (
     address TEXT,
     id_number VARCHAR(50),
     license_number VARCHAR(50),
+    license_expiry_date DATE,
+    psv_expiry_date DATE,
+    ic_front_photo VARCHAR(255),
+    ic_back_photo VARCHAR(255),
+    license_front_photo VARCHAR(255),
+    license_back_photo VARCHAR(255),
+    psv_front_photo VARCHAR(255),
+    psv_back_photo VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -73,6 +81,21 @@ CREATE TABLE IF NOT EXISTS rentals (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (car_id) REFERENCES cars(id) ON DELETE CASCADE,
     FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+);
+
+-- Payments table for tracking payment history
+CREATE TABLE IF NOT EXISTS payments (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    rental_id INT NOT NULL,
+    user_id INT NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    payment_date DATE NOT NULL,
+    payment_method VARCHAR(50),
+    receipt_photo VARCHAR(255),
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (rental_id) REFERENCES rentals(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Insert default admin account

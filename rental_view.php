@@ -36,6 +36,9 @@ if ($result->num_rows == 0) {
 
 $rental = $result->fetch_assoc();
 
+// Get payment history
+$payments_query = $conn->query("SELECT * FROM payments WHERE rental_id = $rental_id ORDER BY payment_date DESC, created_at DESC");
+
 include 'includes/header.php';
 ?>
 
@@ -140,7 +143,14 @@ include 'includes/header.php';
                 
                 <div class="row">
                     <div class="col-md-12">
-                        <h6 class="text-muted mb-3">Payment Information</h6>
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="text-muted mb-0">Payment Information</h6>
+                            <?php if ($rental['payment_status'] != 'paid'): ?>
+                            <a href="payment_add.php?rental_id=<?php echo $rental['id']; ?>" class="btn btn-sm btn-success">
+                                <i class="bi bi-plus-circle me-1"></i>Add Payment
+                            </a>
+                            <?php endif; ?>
+                        </div>
                         <div class="row">
                             <div class="col-md-3">
                                 <p class="mb-1 text-muted">Total Amount</p>
@@ -171,6 +181,57 @@ include 'includes/header.php';
                         </div>
                     </div>
                 </div>
+                
+                <?php if ($payments_query->num_rows > 0): ?>
+                <hr>
+                <div class="row">
+                    <div class="col-md-12">
+                        <h6 class="text-muted mb-3">Payment History</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Amount</th>
+                                        <th>Method</th>
+                                        <th>Receipt</th>
+                                        <th>Notes</th>
+                                        <th>Recorded</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php while ($payment = $payments_query->fetch_assoc()): ?>
+                                    <tr>
+                                        <td><?php echo formatDate($payment['payment_date']); ?></td>
+                                        <td><strong><?php echo formatCurrency($payment['amount']); ?></strong></td>
+                                        <td><?php echo $payment['payment_method'] ?? 'N/A'; ?></td>
+                                        <td>
+                                            <?php if ($payment['receipt_photo']): ?>
+                                            <a href="uploads/receipts/<?php echo $payment['receipt_photo']; ?>" target="_blank" class="btn btn-sm btn-outline-info">
+                                                <i class="bi bi-file-earmark-image"></i> View
+                                            </a>
+                                            <?php else: ?>
+                                            <span class="text-muted">No receipt</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td><?php echo $payment['notes'] ? substr($payment['notes'], 0, 30) . (strlen($payment['notes']) > 30 ? '...' : '') : '-'; ?></td>
+                                        <td><small class="text-muted"><?php echo date('M d, Y', strtotime($payment['created_at'])); ?></small></td>
+                                        <td>
+                                            <a href="payment_delete.php?id=<?php echo $payment['id']; ?>&rental_id=<?php echo $rental['id']; ?>" 
+                                               class="btn btn-sm btn-outline-danger" 
+                                               onclick="return confirm('Are you sure you want to delete this payment? The rental balance will be recalculated.');">
+                                                <i class="bi bi-trash"></i>
+                                            </a>
+                                        </td>
+                                    </tr>
+                                    <?php endwhile; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <?php endif; ?>
                 
                 <?php if ($rental['notes']): ?>
                 <hr>

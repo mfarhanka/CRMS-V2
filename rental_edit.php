@@ -29,14 +29,21 @@ if ($result->num_rows == 0) {
 $rental = $result->fetch_assoc();
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $start_date = sanitize($_POST['start_date']);
+    $end_date = sanitize($_POST['end_date']);
     $status = sanitize($_POST['status']);
     $payment_status = sanitize($_POST['payment_status']);
     $amount_paid = floatval($_POST['amount_paid']);
-    $actual_return_date = sanitize($_POST['actual_return_date']);
     $notes = sanitize($_POST['notes']);
     
-    $update_stmt = $conn->prepare("UPDATE rentals SET status = ?, payment_status = ?, amount_paid = ?, actual_return_date = ?, notes = ? WHERE id = ?");
-    $update_stmt->bind_param("ssdssi", $status, $payment_status, $amount_paid, $actual_return_date, $notes, $rental_id);
+    // Calculate total days and amount
+    $start = new DateTime($start_date);
+    $end = new DateTime($end_date);
+    $total_days = $end->diff($start)->days + 1;
+    $total_amount = $total_days * $rental['daily_rate'];
+    
+    $update_stmt = $conn->prepare("UPDATE rentals SET start_date = ?, end_date = ?, total_days = ?, total_amount = ?, status = ?, payment_status = ?, amount_paid = ?, notes = ? WHERE id = ?");
+    $update_stmt->bind_param("ssidssdsi", $start_date, $end_date, $total_days, $total_amount, $status, $payment_status, $amount_paid, $notes, $rental_id);
     
     if ($update_stmt->execute()) {
         // Update car status based on rental status
@@ -67,26 +74,34 @@ include 'includes/header.php';
                     </div>
                 <?php endif; ?>
                 
-                <form method="POST" action="">
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <p class="mb-1 text-muted">Start Date</p>
-                            <p class="fw-bold"><?php echo formatDate($rental['start_date']); ?></p>
+                <form method="POST" action="" id="rentalEditForm">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="start_date" class="form-label">Start Date <span class="text-danger">*</span></label>
+                            <input type="date" class="form-control" id="start_date" name="start_date" value="<?php echo $rental['start_date']; ?>" required>
                         </div>
-                        <div class="col-md-6">
-                            <p class="mb-1 text-muted">End Date</p>
-                            <p class="fw-bold"><?php echo formatDate($rental['end_date']); ?></p>
+                        <div class="col-md-6 mb-3">
+                            <label for="end_date" class="form-label">End Date <span class="text-danger">*</span></label>
+                            <input type="date" class="form-control" id="end_date" name="end_date" value="<?php echo $rental['end_date']; ?>" required>
                         </div>
                     </div>
                     
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <p class="mb-1 text-muted">Total Days</p>
-                            <p class="fw-bold"><?php echo $rental['total_days']; ?> days</p>
-                        </div>
-                        <div class="col-md-6">
-                            <p class="mb-1 text-muted">Total Amount</p>
-                            <p class="fw-bold"><?php echo formatCurrency($rental['total_amount']); ?></p>
+                    <div class="card bg-light mb-3">
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <p class="mb-1 text-muted">Daily Rate</p>
+                                    <h6 id="daily_rate_display"><?php echo formatCurrency($rental['daily_rate']); ?></h6>
+                                </div>
+                                <div class="col-md-4">
+                                    <p class="mb-1 text-muted">Total Days</p>
+                                    <h6 id="total_days_display"><?php echo $rental['total_days']; ?> days</h6>
+                                </div>
+                                <div class="col-md-4">
+                                    <p class="mb-1 text-muted">Total Amount</p>
+                                    <h6 id="total_amount_display"><?php echo formatCurrency($rental['total_amount']); ?></h6>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     
@@ -103,14 +118,6 @@ include 'includes/header.php';
                         </div>
                         
                         <div class="col-md-6 mb-3">
-                            <label for="actual_return_date" class="form-label">Actual Return Date</label>
-                            <input type="date" class="form-control" id="actual_return_date" name="actual_return_date" 
-                                   value="<?php echo $rental['actual_return_date']; ?>">
-                        </div>
-                    </div>
-                    
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
                             <label for="payment_status" class="form-label">Payment Status</label>
                             <select class="form-select" id="payment_status" name="payment_status">
                                 <option value="pending" <?php echo $rental['payment_status'] == 'pending' ? 'selected' : ''; ?>>Pending</option>
@@ -118,7 +125,9 @@ include 'includes/header.php';
                                 <option value="paid" <?php echo $rental['payment_status'] == 'paid' ? 'selected' : ''; ?>>Paid</option>
                             </select>
                         </div>
-                        
+                    </div>
+                    
+                    <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="amount_paid" class="form-label">Amount Paid (RM)</label>
                             <input type="number" class="form-control" id="amount_paid" name="amount_paid" 
@@ -143,6 +152,39 @@ include 'includes/header.php';
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const startDate = document.getElementById('start_date');
+    const endDate = document.getElementById('end_date');
+    const dailyRate = <?php echo $rental['daily_rate']; ?>;
+    
+    function calculateTotal() {
+        if (startDate.value && endDate.value) {
+            const start = new Date(startDate.value);
+            const end = new Date(endDate.value);
+            const diffTime = end - start;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+            
+            if (diffDays > 0) {
+                const totalAmount = diffDays * dailyRate;
+                document.getElementById('total_days_display').textContent = diffDays + ' days';
+                document.getElementById('total_amount_display').textContent = 'RM ' + totalAmount.toFixed(2);
+                document.getElementById('amount_paid').max = totalAmount;
+            }
+        }
+    }
+    
+    startDate.addEventListener('change', function() {
+        if (this.value) {
+            endDate.min = this.value;
+        }
+        calculateTotal();
+    });
+    
+    endDate.addEventListener('change', calculateTotal);
+});
+</script>
 
 <?php
 closeDBConnection($conn);
