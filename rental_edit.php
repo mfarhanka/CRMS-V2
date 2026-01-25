@@ -32,8 +32,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $start_date = sanitize($_POST['start_date']);
     $end_date = sanitize($_POST['end_date']);
     $status = sanitize($_POST['status']);
-    $payment_status = sanitize($_POST['payment_status']);
-    $amount_paid = floatval($_POST['amount_paid']);
     $notes = sanitize($_POST['notes']);
     
     // Calculate total days and amount
@@ -42,8 +40,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $total_days = $end->diff($start)->days + 1;
     $total_amount = $total_days * $rental['daily_rate'];
     
-    $update_stmt = $conn->prepare("UPDATE rentals SET start_date = ?, end_date = ?, total_days = ?, total_amount = ?, status = ?, payment_status = ?, amount_paid = ?, notes = ? WHERE id = ?");
-    $update_stmt->bind_param("ssidssdsi", $start_date, $end_date, $total_days, $total_amount, $status, $payment_status, $amount_paid, $notes, $rental_id);
+    $update_stmt = $conn->prepare("UPDATE rentals SET start_date = ?, end_date = ?, total_days = ?, total_amount = ?, status = ?, notes = ? WHERE id = ?");
+    $update_stmt->bind_param("ssidssi", $start_date, $end_date, $total_days, $total_amount, $status, $notes, $rental_id);
     
     if ($update_stmt->execute()) {
         // Update car status based on rental status
@@ -107,33 +105,18 @@ include 'includes/header.php';
                     
                     <hr>
                     
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label for="status" class="form-label">Rental Status</label>
-                            <select class="form-select" id="status" name="status">
-                                <option value="active" <?php echo $rental['status'] == 'active' ? 'selected' : ''; ?>>Active</option>
-                                <option value="completed" <?php echo $rental['status'] == 'completed' ? 'selected' : ''; ?>>Completed</option>
-                                <option value="cancelled" <?php echo $rental['status'] == 'cancelled' ? 'selected' : ''; ?>>Cancelled</option>
-                            </select>
-                        </div>
-                        
-                        <div class="col-md-6 mb-3">
-                            <label for="payment_status" class="form-label">Payment Status</label>
-                            <select class="form-select" id="payment_status" name="payment_status">
-                                <option value="pending" <?php echo $rental['payment_status'] == 'pending' ? 'selected' : ''; ?>>Pending</option>
-                                <option value="partial" <?php echo $rental['payment_status'] == 'partial' ? 'selected' : ''; ?>>Partial</option>
-                                <option value="paid" <?php echo $rental['payment_status'] == 'paid' ? 'selected' : ''; ?>>Paid</option>
-                            </select>
-                        </div>
+                    <div class="mb-3">
+                        <label for="status" class="form-label">Rental Status</label>
+                        <select class="form-select" id="status" name="status">
+                            <option value="active" <?php echo $rental['status'] == 'active' ? 'selected' : ''; ?>>Active</option>
+                            <option value="completed" <?php echo $rental['status'] == 'completed' ? 'selected' : ''; ?>>Completed</option>
+                            <option value="cancelled" <?php echo $rental['status'] == 'cancelled' ? 'selected' : ''; ?>>Cancelled</option>
+                        </select>
                     </div>
                     
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label for="amount_paid" class="form-label">Amount Paid (RM)</label>
-                            <input type="number" class="form-control" id="amount_paid" name="amount_paid" 
-                                   step="0.01" min="0" max="<?php echo $rental['total_amount']; ?>" 
-                                   value="<?php echo $rental['amount_paid']; ?>">
-                        </div>
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>Payment tracking:</strong> Use the "View Details" page to add and manage payments with receipt proof.
                     </div>
                     
                     <div class="mb-3">
@@ -170,7 +153,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 const totalAmount = diffDays * dailyRate;
                 document.getElementById('total_days_display').textContent = diffDays + ' days';
                 document.getElementById('total_amount_display').textContent = 'RM ' + totalAmount.toFixed(2);
-                document.getElementById('amount_paid').max = totalAmount;
             }
         }
     }
