@@ -64,14 +64,14 @@ if (isAdmin()) {
                              JOIN cars c ON r.car_id = c.id 
                              JOIN customers cu ON r.customer_id = cu.id 
                              JOIN users u ON r.user_id = u.id 
-                             ORDER BY r.created_at DESC");
+                             ORDER BY r.start_date DESC");
 } else {
     $rentals = $conn->query("SELECT r.*, c.brand, c.model, c.plate_number, cu.full_name as customer_name 
                              FROM rentals r 
                              JOIN cars c ON r.car_id = c.id 
                              JOIN customers cu ON r.customer_id = cu.id 
                              WHERE r.user_id = $user_id 
-                             ORDER BY r.created_at DESC");
+                             ORDER BY r.start_date DESC");
 }
 
 include 'includes/header.php';
