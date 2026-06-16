@@ -6,7 +6,25 @@ if (session_status() == PHP_SESSION_NONE) {
 
 // Site configuration
 define('SITE_NAME', 'Car Rental Management System');
-define('SITE_URL', 'http://localhost/crms-v2/');
+
+$isHttps = (
+    (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+    || (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443)
+);
+
+if (!empty($_SERVER['HTTP_X_FORWARDED_PROTO'])) {
+    $forwardedProto = strtolower(trim(explode(',', $_SERVER['HTTP_X_FORWARDED_PROTO'])[0]));
+    if ($forwardedProto === 'http' || $forwardedProto === 'https') {
+        $isHttps = $forwardedProto === 'https';
+    }
+}
+
+$scheme = $isHttps ? 'https' : 'http';
+$host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$basePath = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '')), '/');
+$basePath = ($basePath === '' || $basePath === '.') ? '' : $basePath;
+
+define('SITE_URL', $scheme . '://' . $host . $basePath . '/');
 
 // Include database connection
 require_once __DIR__ . '/database.php';
