@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
     full_name VARCHAR(100) NOT NULL,
     company_name VARCHAR(100),
     phone VARCHAR(20),
-    role ENUM('admin', 'agent') DEFAULT 'agent',
+    role ENUM('admin', 'agent', 'superadmin') DEFAULT 'agent',
     status ENUM('active', 'inactive') DEFAULT 'active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP

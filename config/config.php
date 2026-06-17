@@ -36,7 +36,12 @@ function isLoggedIn() {
 
 // Check if user is admin
 function isAdmin() {
-    return isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
+    return isset($_SESSION['role']) && ($_SESSION['role'] === 'admin' || $_SESSION['role'] === 'superadmin');
+}
+
+// Check if user is superadmin
+function isSuperAdmin() {
+    return isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin';
 }
 
 // Redirect if not logged in
@@ -51,6 +56,15 @@ function requireLogin() {
 function requireAdmin() {
     requireLogin();
     if (!isAdmin()) {
+        header('Location: ' . SITE_URL . 'dashboard.php');
+        exit();
+    }
+}
+
+// Redirect if not superadmin
+function requireSuperAdmin() {
+    requireLogin();
+    if (!isSuperAdmin()) {
         header('Location: ' . SITE_URL . 'dashboard.php');
         exit();
     }

