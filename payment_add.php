@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $payment_date = sanitize($_POST['payment_date']);
     $payment_method = sanitize($_POST['payment_method']);
     $notes = sanitize($_POST['notes']);
-    $user_id = $_SESSION['user_id'];
+    $user_id = intval($rental['user_id']);
     
     if (empty($amount) || empty($payment_date)) {
         $error = 'Please fill in all required fields';

@@ -6,22 +6,6 @@ $page_title = 'Add New Car';
 $error = '';
 $success = '';
 $conn = getDBConnection();
-$owner_options = [];
-$selected_owner_id = intval($_SESSION['user_id'] ?? 0);
-
-if (isAdmin()) {
-    $owners = $conn->query("SELECT id, full_name, company_name, role FROM users WHERE status = 'active' AND role IN ('admin', 'agent') ORDER BY role, full_name");
-
-    while ($owner = $owners->fetch_assoc()) {
-        $owner_options[] = $owner;
-    }
-
-    if (!empty($owner_options)) {
-        $selected_owner_id = intval($owner_options[0]['id']);
-    } else {
-        $error = 'No active users are available to own this car.';
-    }
-}
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $brand = sanitize($_POST['brand']);
@@ -34,58 +18,43 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $description = sanitize($_POST['description']);
     $user_id = intval($_SESSION['user_id']);
 
-    if (isAdmin()) {
-        $user_id = intval($_POST['owner_user_id'] ?? 0);
-        $selected_owner_id = $user_id;
+    if ($user_id <= 0) {
+        $owner_result = $conn->query("SELECT id FROM users WHERE status = 'active' ORDER BY role = 'admin' DESC, role = 'agent' DESC, full_name LIMIT 1");
+        if ($owner_result && $owner_result->num_rows === 1) {
+            $user_id = intval($owner_result->fetch_assoc()['id']);
+        } else {
+            $error = 'No active account is available to own this car.';
+        }
     }
     
-    if (empty($brand) || empty($model) || empty($plate_number) || empty($daily_rate)) {
+    if (!$error && (empty($brand) || empty($model) || empty($plate_number) || empty($daily_rate))) {
         $error = 'Please fill in all required fields';
-    } else {
-        $valid_owner = false;
+    }
 
-        if (isAdmin()) {
-            foreach ($owner_options as $owner) {
-                if (intval($owner['id']) === $user_id) {
-                    $valid_owner = true;
-                    break;
-                }
-            }
+    if (!$error) {
+        // Check if plate number exists
+        $check_stmt = $conn->prepare("SELECT id FROM cars WHERE plate_number = ?");
+        $check_stmt->bind_param("s", $plate_number);
+        $check_stmt->execute();
+        $result = $check_stmt->get_result();
+
+        if ($result->num_rows > 0) {
+            $error = 'A car with this plate number already exists';
         } else {
-            $owner_stmt = $conn->prepare("SELECT id FROM users WHERE id = ? AND status = 'active'");
-            $owner_stmt->bind_param("i", $user_id);
-            $owner_stmt->execute();
-            $valid_owner = $owner_stmt->get_result()->num_rows === 1;
-            $owner_stmt->close();
-        }
+            $insert_stmt = $conn->prepare("INSERT INTO cars (user_id, brand, model, year, color, plate_number, daily_rate, status, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $insert_stmt->bind_param("ississdss", $user_id, $brand, $model, $year, $color, $plate_number, $daily_rate, $status, $description);
 
-        if (!$valid_owner) {
-            $error = 'Please select a valid car owner';
-        } else {
-            // Check if plate number exists
-            $check_stmt = $conn->prepare("SELECT id FROM cars WHERE plate_number = ?");
-            $check_stmt->bind_param("s", $plate_number);
-            $check_stmt->execute();
-            $result = $check_stmt->get_result();
-
-            if ($result->num_rows > 0) {
-                $error = 'A car with this plate number already exists';
+            if ($insert_stmt->execute()) {
+                header('Location: cars.php');
+                exit();
             } else {
-                $insert_stmt = $conn->prepare("INSERT INTO cars (user_id, brand, model, year, color, plate_number, daily_rate, status, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-                $insert_stmt->bind_param("ississdss", $user_id, $brand, $model, $year, $color, $plate_number, $daily_rate, $status, $description);
-
-                if ($insert_stmt->execute()) {
-                    header('Location: cars.php');
-                    exit();
-                } else {
-                    $error = 'Something went wrong. Please try again.';
-                }
-
-                $insert_stmt->close();
+                $error = 'Something went wrong. Please try again.';
             }
 
-            $check_stmt->close();
+            $insert_stmt->close();
         }
+
+        $check_stmt->close();
     }
 }
 
@@ -106,23 +75,6 @@ include 'includes/header.php';
                 <?php endif; ?>
                 
                 <form method="POST" action="">
-                    <?php if (isAdmin()): ?>
-                    <div class="mb-3">
-                        <label for="owner_user_id" class="form-label">Owner <span class="text-danger">*</span></label>
-                        <select class="form-select" id="owner_user_id" name="owner_user_id" required>
-                            <?php foreach ($owner_options as $owner): ?>
-                                <?php
-                                $owner_label = $owner['company_name'] ?: $owner['full_name'];
-                                $owner_label .= ' (' . ucfirst($owner['role']) . ')';
-                                ?>
-                                <option value="<?php echo intval($owner['id']); ?>" <?php echo intval($owner['id']) === $selected_owner_id ? 'selected' : ''; ?>>
-                                    <?php echo htmlspecialchars($owner_label, ENT_QUOTES, 'UTF-8'); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <?php endif; ?>
-
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="brand" class="form-label">Brand <span class="text-danger">*</span></label>

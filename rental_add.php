@@ -5,7 +5,7 @@ requireLogin();
 $page_title = 'New Rental';
 $error = '';
 $conn = getDBConnection();
-$user_id = $_SESSION['user_id'];
+$user_id = intval($_SESSION['user_id']);
 
 // Get available cars
 $available_cars = isAdmin() 
@@ -31,14 +31,45 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     } elseif (strtotime($end_date) < strtotime($start_date)) {
         $error = 'End date must be after start date';
     } else {
-        // Get car daily rate
-        $car_result = $conn->query("SELECT daily_rate FROM cars WHERE id = $car_id");
+        // Get car/customer ownership and rate. Superadmin has user_id 0, so rentals
+        // must be assigned to the real account that owns the selected records.
+        if (isAdmin()) {
+            $car_stmt = $conn->prepare("SELECT user_id, daily_rate FROM cars WHERE id = ? AND status = 'available'");
+            $car_stmt->bind_param("i", $car_id);
+            $customer_stmt = $conn->prepare("SELECT user_id FROM customers WHERE id = ?");
+            $customer_stmt->bind_param("i", $customer_id);
+        } else {
+            $car_stmt = $conn->prepare("SELECT user_id, daily_rate FROM cars WHERE id = ? AND user_id = ? AND status = 'available'");
+            $car_stmt->bind_param("ii", $car_id, $user_id);
+            $customer_stmt = $conn->prepare("SELECT user_id FROM customers WHERE id = ? AND user_id = ?");
+            $customer_stmt->bind_param("ii", $customer_id, $user_id);
+        }
+
+        $car_stmt->execute();
+        $car_result = $car_stmt->get_result();
+        $customer_stmt->execute();
+        $customer_result = $customer_stmt->get_result();
+
         if ($car_result->num_rows == 0) {
             $error = 'Selected car not found';
+        } elseif ($customer_result->num_rows == 0) {
+            $error = 'Selected customer not found';
         } else {
             $car = $car_result->fetch_assoc();
+            $customer = $customer_result->fetch_assoc();
+            $rental_user_id = intval($car['user_id']);
+
+            if ($rental_user_id !== intval($customer['user_id'])) {
+                $error = 'Selected car and customer must belong to the same account';
+            }
+
             $daily_rate = $car['daily_rate'];
-            
+        }
+
+        $car_stmt->close();
+        $customer_stmt->close();
+
+        if (!$error) {
             // Calculate total days and amount
             $start = new DateTime($start_date);
             $end = new DateTime($end_date);
@@ -47,11 +78,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             
             // Insert rental
             $stmt = $conn->prepare("INSERT INTO rentals (user_id, car_id, customer_id, start_date, end_date, total_days, daily_rate, total_amount, payment_status, amount_paid, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt->bind_param("iiissiidsds", $user_id, $car_id, $customer_id, $start_date, $end_date, $total_days, $daily_rate, $total_amount, $payment_status, $amount_paid, $notes);
+            $stmt->bind_param("iiissiidsds", $rental_user_id, $car_id, $customer_id, $start_date, $end_date, $total_days, $daily_rate, $total_amount, $payment_status, $amount_paid, $notes);
             
             if ($stmt->execute()) {
                 // Update car status
-                $conn->query("UPDATE cars SET status = 'rented' WHERE id = $car_id");
+                $status_stmt = $conn->prepare("UPDATE cars SET status = 'rented' WHERE id = ?");
+                $status_stmt->bind_param("i", $car_id);
+                $status_stmt->execute();
+                $status_stmt->close();
                 header('Location: rentals.php');
                 exit();
             } else {
