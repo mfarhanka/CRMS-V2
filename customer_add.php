@@ -4,6 +4,23 @@ requireLogin();
 
 $page_title = 'Add New Customer';
 $error = '';
+$conn = getDBConnection();
+$owner_options = [];
+$selected_owner_id = intval($_SESSION['user_id'] ?? 0);
+
+if (isAdmin()) {
+    $owners = $conn->query("SELECT id, full_name, company_name, role FROM users WHERE status = 'active' AND role IN ('admin', 'agent') ORDER BY role, full_name");
+
+    while ($owner = $owners->fetch_assoc()) {
+        $owner_options[] = $owner;
+    }
+
+    if (!empty($owner_options)) {
+        $selected_owner_id = intval($owner_options[0]['id']);
+    } else {
+        $error = 'No active users are available to own this customer.';
+    }
+}
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $full_name = sanitize($_POST['full_name']);
@@ -14,11 +31,36 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $license_number = sanitize($_POST['license_number']);
     $license_expiry_date = !empty($_POST['license_expiry_date']) ? sanitize($_POST['license_expiry_date']) : NULL;
     $psv_expiry_date = !empty($_POST['psv_expiry_date']) ? sanitize($_POST['psv_expiry_date']) : NULL;
-    $user_id = $_SESSION['user_id'];
+    $user_id = intval($_SESSION['user_id']);
+
+    if (isAdmin()) {
+        $user_id = intval($_POST['owner_user_id'] ?? 0);
+        $selected_owner_id = $user_id;
+    }
     
     if (empty($full_name) || empty($phone)) {
         $error = 'Please fill in all required fields';
     } else {
+        $valid_owner = false;
+
+        if (isAdmin()) {
+            foreach ($owner_options as $owner) {
+                if (intval($owner['id']) === $user_id) {
+                    $valid_owner = true;
+                    break;
+                }
+            }
+        } else {
+            $owner_stmt = $conn->prepare("SELECT id FROM users WHERE id = ? AND status = 'active'");
+            $owner_stmt->bind_param("i", $user_id);
+            $owner_stmt->execute();
+            $valid_owner = $owner_stmt->get_result()->num_rows === 1;
+            $owner_stmt->close();
+        }
+
+        if (!$valid_owner) {
+            $error = 'Please select a valid customer owner';
+        } else {
         // Handle file uploads
         $upload_dir = 'uploads/customers/';
         if (!is_dir($upload_dir)) {
@@ -88,20 +130,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
         }
         
-        $conn = getDBConnection();
-        
-        $stmt = $conn->prepare("INSERT INTO customers (user_id, full_name, email, phone, address, id_number, license_number, license_expiry_date, psv_expiry_date, ic_front_photo, ic_back_photo, license_front_photo, license_back_photo, psv_front_photo, psv_back_photo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("issssssssssssss", $user_id, $full_name, $email, $phone, $address, $id_number, $license_number, $license_expiry_date, $psv_expiry_date, $ic_front_photo, $ic_back_photo, $license_front_photo, $license_back_photo, $psv_front_photo, $psv_back_photo);
-        
-        if ($stmt->execute()) {
-            header('Location: customers.php');
-            exit();
-        } else {
-            $error = 'Something went wrong. Please try again.';
+            $stmt = $conn->prepare("INSERT INTO customers (user_id, full_name, email, phone, address, id_number, license_number, license_expiry_date, psv_expiry_date, ic_front_photo, ic_back_photo, license_front_photo, license_back_photo, psv_front_photo, psv_back_photo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param("issssssssssssss", $user_id, $full_name, $email, $phone, $address, $id_number, $license_number, $license_expiry_date, $psv_expiry_date, $ic_front_photo, $ic_back_photo, $license_front_photo, $license_back_photo, $psv_front_photo, $psv_back_photo);
+
+            if ($stmt->execute()) {
+                header('Location: customers.php');
+                exit();
+            } else {
+                $error = 'Something went wrong. Please try again.';
+            }
+
+            $stmt->close();
         }
-        
-        $stmt->close();
-        closeDBConnection($conn);
     }
 }
 
@@ -122,6 +162,23 @@ include 'includes/header.php';
                 <?php endif; ?>
                 
                 <form method="POST" action="" enctype="multipart/form-data">
+                    <?php if (isAdmin()): ?>
+                    <div class="mb-3">
+                        <label for="owner_user_id" class="form-label">Owner <span class="text-danger">*</span></label>
+                        <select class="form-select" id="owner_user_id" name="owner_user_id" required>
+                            <?php foreach ($owner_options as $owner): ?>
+                                <?php
+                                $owner_label = $owner['company_name'] ?: $owner['full_name'];
+                                $owner_label .= ' (' . ucfirst($owner['role']) . ')';
+                                ?>
+                                <option value="<?php echo intval($owner['id']); ?>" <?php echo intval($owner['id']) === $selected_owner_id ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($owner_label, ENT_QUOTES, 'UTF-8'); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <?php endif; ?>
+
                     <h6 class="text-muted mb-3">Basic Information</h6>
                     
                     <div class="mb-3">
@@ -226,4 +283,7 @@ include 'includes/header.php';
     </div>
 </div>
 
-<?php include 'includes/footer.php'; ?>
+<?php
+closeDBConnection($conn);
+include 'includes/footer.php';
+?>
