@@ -124,6 +124,27 @@ function refreshRentalPaymentStatus($conn, $rental_id) {
     $stmt->close();
 }
 
+function uploadPaymentReceipt($field_name) {
+    if (empty($_FILES[$field_name]['name'])) {
+        return '';
+    }
+
+    $upload_dir = 'uploads/receipts/';
+    if (!is_dir($upload_dir)) {
+        mkdir($upload_dir, 0777, true);
+    }
+
+    $allowed_types = ['jpg', 'jpeg', 'png', 'pdf'];
+    $ext = strtolower(pathinfo($_FILES[$field_name]['name'], PATHINFO_EXTENSION));
+    if (!in_array($ext, $allowed_types)) {
+        return '';
+    }
+
+    $receipt_photo = 'receipt_' . time() . '_' . rand(1000, 9999) . '.' . $ext;
+    move_uploaded_file($_FILES[$field_name]['tmp_name'], $upload_dir . $receipt_photo);
+    return $receipt_photo;
+}
+
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $rental_action = sanitize($_POST['rental_action'] ?? '');
 
@@ -343,13 +364,37 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $stmt = $conn->prepare("UPDATE rental_payment_records SET status = 'paid', paid_date = ?, amount_paid = ? WHERE id = ?");
             $stmt->bind_param("sdi", $paid_date, $amount_paid, $record_id);
         } else {
-            $stmt = $conn->prepare("UPDATE rental_payment_records SET status = 'pending', paid_date = NULL, amount_paid = 0 WHERE id = ?");
+            $record = $conn->query("SELECT receipt_photo FROM rental_payment_records WHERE id = $record_id")->fetch_assoc();
+            if (!empty($record['receipt_photo']) && file_exists('uploads/receipts/' . $record['receipt_photo'])) {
+                unlink('uploads/receipts/' . $record['receipt_photo']);
+            }
+            $stmt = $conn->prepare("UPDATE rental_payment_records SET status = 'pending', paid_date = NULL, amount_paid = 0, receipt_photo = NULL WHERE id = ?");
             $stmt->bind_param("i", $record_id);
         }
 
         $stmt->execute();
         $stmt->close();
         refreshRentalPaymentStatus($conn, $rental_id);
+        header('Location: rentals.php?view=' . $rental_id);
+        exit();
+    } elseif ($rental_action == 'upload_receipt') {
+        $record_id = intval($_POST['record_id'] ?? 0);
+        $rental_id = intval($_POST['rental_id'] ?? 0);
+        $record = $conn->query("SELECT receipt_photo FROM rental_payment_records WHERE id = $record_id AND rental_id = $rental_id AND status = 'paid'")->fetch_assoc();
+
+        if ($record) {
+            $receipt_photo = uploadPaymentReceipt('receipt_photo');
+            if ($receipt_photo) {
+                if (!empty($record['receipt_photo']) && file_exists('uploads/receipts/' . $record['receipt_photo'])) {
+                    unlink('uploads/receipts/' . $record['receipt_photo']);
+                }
+                $stmt = $conn->prepare("UPDATE rental_payment_records SET receipt_photo = ? WHERE id = ?");
+                $stmt->bind_param("si", $receipt_photo, $record_id);
+                $stmt->execute();
+                $stmt->close();
+            }
+        }
+
         header('Location: rentals.php?view=' . $rental_id);
         exit();
     }
@@ -585,6 +630,7 @@ include 'includes/header.php';
                                 <th>Due Date</th>
                                 <th>Amount Due</th>
                                 <th>Paid</th>
+                                <th>Receipt</th>
                                 <th>Status</th>
                                 <th>Action</th>
                             </tr>
@@ -596,17 +642,37 @@ include 'includes/header.php';
                                 <td><?php echo formatDate($record['due_date']); ?></td>
                                 <td><?php echo formatCurrency($record['amount_due']); ?></td>
                                 <td><?php echo $record['status'] == 'paid' ? formatCurrency($record['amount_paid']) . '<br><small class="text-muted">' . formatDate($record['paid_date']) . '</small>' : '-'; ?></td>
+                                <td>
+                                    <?php if (!empty($record['receipt_photo'])): ?>
+                                    <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#receiptModal<?php echo $record['id']; ?>">
+                                        <i class="bi bi-receipt me-1"></i>Receipt
+                                    </button>
+                                    <?php else: ?>
+                                    <span class="text-muted">-</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td><span class="badge <?php echo $record['status'] == 'paid' ? 'bg-success' : 'bg-danger'; ?>"><?php echo ucfirst($record['status']); ?></span></td>
                                 <td>
                                     <?php if ($record['status'] == 'paid'): ?>
-                                    <form method="POST" action="rentals.php" class="d-inline">
-                                        <input type="hidden" name="rental_action" value="mark_pending">
-                                        <input type="hidden" name="rental_id" value="<?php echo $rental['id']; ?>">
-                                        <input type="hidden" name="record_id" value="<?php echo $record['id']; ?>">
-                                        <button type="submit" class="btn btn-sm btn-outline-warning">Mark Pending</button>
-                                    </form>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        <?php if (empty($record['receipt_photo'])): ?>
+                                        <form method="POST" action="rentals.php" enctype="multipart/form-data" class="d-flex flex-wrap gap-2">
+                                            <input type="hidden" name="rental_action" value="upload_receipt">
+                                            <input type="hidden" name="rental_id" value="<?php echo $rental['id']; ?>">
+                                            <input type="hidden" name="record_id" value="<?php echo $record['id']; ?>">
+                                            <input type="file" name="receipt_photo" accept="image/*,.pdf" class="form-control form-control-sm" style="max-width: 220px;" required>
+                                            <button type="submit" class="btn btn-sm btn-outline-info">Upload Receipt</button>
+                                        </form>
+                                        <?php endif; ?>
+                                        <form method="POST" action="rentals.php" class="d-inline">
+                                            <input type="hidden" name="rental_action" value="mark_pending">
+                                            <input type="hidden" name="rental_id" value="<?php echo $rental['id']; ?>">
+                                            <input type="hidden" name="record_id" value="<?php echo $record['id']; ?>">
+                                            <button type="submit" class="btn btn-sm btn-outline-warning">Mark Pending</button>
+                                        </form>
+                                    </div>
                                     <?php else: ?>
-                                    <form method="POST" action="rentals.php" class="d-flex gap-2">
+                                    <form method="POST" action="rentals.php" class="d-flex flex-wrap gap-2">
                                         <input type="hidden" name="rental_action" value="mark_paid">
                                         <input type="hidden" name="rental_id" value="<?php echo $rental['id']; ?>">
                                         <input type="hidden" name="record_id" value="<?php echo $record['id']; ?>">
@@ -769,6 +835,40 @@ include 'includes/header.php';
         </form>
     </div>
 </div>
+<?php endforeach; ?>
+
+<?php foreach ($payment_records as $rental_record_group): ?>
+<?php foreach ($rental_record_group as $record): ?>
+<?php if (!empty($record['receipt_photo'])): ?>
+<?php
+$receipt_path = 'uploads/receipts/' . $record['receipt_photo'];
+$receipt_ext = strtolower(pathinfo($record['receipt_photo'], PATHINFO_EXTENSION));
+?>
+<div class="modal fade" id="receiptModal<?php echo $record['id']; ?>" tabindex="-1" aria-labelledby="receiptModalLabel<?php echo $record['id']; ?>" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="receiptModalLabel<?php echo $record['id']; ?>">Payment Receipt</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <?php if ($receipt_ext == 'pdf'): ?>
+                <iframe src="<?php echo $receipt_path; ?>" class="w-100 border rounded" style="height: 70vh;"></iframe>
+                <?php else: ?>
+                <img src="<?php echo $receipt_path; ?>" alt="Payment receipt" class="img-fluid rounded border d-block mx-auto">
+                <?php endif; ?>
+            </div>
+            <div class="modal-footer">
+                <a href="<?php echo $receipt_path; ?>" target="_blank" class="btn btn-outline-dark">
+                    <i class="bi bi-box-arrow-up-right me-2"></i>Open File
+                </a>
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+<?php endforeach; ?>
 <?php endforeach; ?>
 
 <script>

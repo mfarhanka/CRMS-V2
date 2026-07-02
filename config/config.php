@@ -191,12 +191,17 @@ function ensureRentalSchema($conn) {
             amount_due DECIMAL(10,2) NOT NULL,
             amount_paid DECIMAL(10,2) NOT NULL DEFAULT 0,
             paid_date DATE,
+            receipt_photo VARCHAR(255),
             status ENUM('pending', 'paid') DEFAULT 'pending',
             notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             FOREIGN KEY (rental_id) REFERENCES rentals(id) ON DELETE CASCADE
         )");
+    }
+
+    if (!tableColumnExists($conn, 'rental_payment_records', 'receipt_photo')) {
+        $conn->query("ALTER TABLE rental_payment_records ADD COLUMN receipt_photo VARCHAR(255) AFTER paid_date");
     }
 }
 

@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS rental_payment_records (
     amount_due DECIMAL(10,2) NOT NULL,
     amount_paid DECIMAL(10,2) NOT NULL DEFAULT 0,
     paid_date DATE,
+    receipt_photo VARCHAR(255),
     status ENUM('pending', 'paid') DEFAULT 'pending',
     notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
