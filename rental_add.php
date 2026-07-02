@@ -155,12 +155,22 @@ include 'includes/header.php';
                     </div>
                     
                     <div class="row">
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-4 mb-3">
                             <label for="start_date" class="form-label">Start Date <span class="text-danger">*</span></label>
                             <input type="date" class="form-control" id="start_date" name="start_date" required>
                         </div>
+
+                        <div class="col-md-4 mb-3">
+                            <label for="rental_period" class="form-label">Rental Period</label>
+                            <select class="form-select" id="rental_period" name="rental_period">
+                                <option value="">Custom</option>
+                                <option value="day">1 Day</option>
+                                <option value="week">1 Week</option>
+                                <option value="month">1 Month (30 Days)</option>
+                            </select>
+                        </div>
                         
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-4 mb-3">
                             <label for="end_date" class="form-label">End Date <span class="text-danger">*</span></label>
                             <input type="date" class="form-control" id="end_date" name="end_date" required>
                         </div>
@@ -225,22 +235,52 @@ document.addEventListener('DOMContentLoaded', function() {
     const carSelect = document.getElementById('car_id');
     const startDate = document.getElementById('start_date');
     const endDate = document.getElementById('end_date');
+    const rentalPeriod = document.getElementById('rental_period');
+
+    function parseDateInput(value) {
+        const parts = value.split('-').map(Number);
+        return new Date(parts[0], parts[1] - 1, parts[2]);
+    }
+
+    function formatDateInput(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    function applyRentalPeriod() {
+        if (!startDate.value || !rentalPeriod.value) {
+            return;
+        }
+
+        const end = parseDateInput(startDate.value);
+
+        if (rentalPeriod.value === 'week') {
+            end.setDate(end.getDate() + 6);
+        } else if (rentalPeriod.value === 'month') {
+            end.setDate(end.getDate() + 29);
+        }
+
+        endDate.value = formatDateInput(end);
+        endDate.min = startDate.value;
+    }
     
     function calculateTotal() {
         const selectedCar = carSelect.options[carSelect.selectedIndex];
         const dailyRate = parseFloat(selectedCar.dataset.rate) || 0;
         
         if (startDate.value && endDate.value) {
-            const start = new Date(startDate.value);
-            const end = new Date(endDate.value);
+            const start = parseDateInput(startDate.value);
+            const end = parseDateInput(endDate.value);
             const diffTime = end - start;
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
             
             if (diffDays > 0) {
                 const totalAmount = diffDays * dailyRate;
-                document.getElementById('daily_rate_display').textContent = '$' + dailyRate.toFixed(2);
+                document.getElementById('daily_rate_display').textContent = 'RM ' + dailyRate.toFixed(2);
                 document.getElementById('total_days_display').textContent = diffDays;
-                document.getElementById('total_amount_display').textContent = '$' + totalAmount.toFixed(2);
+                document.getElementById('total_amount_display').textContent = 'RM ' + totalAmount.toFixed(2);
             }
         }
     }
@@ -248,9 +288,17 @@ document.addEventListener('DOMContentLoaded', function() {
     carSelect.addEventListener('change', calculateTotal);
     startDate.addEventListener('change', function() {
         endDate.min = this.value;
+        applyRentalPeriod();
         calculateTotal();
     });
-    endDate.addEventListener('change', calculateTotal);
+    rentalPeriod.addEventListener('change', function() {
+        applyRentalPeriod();
+        calculateTotal();
+    });
+    endDate.addEventListener('change', function() {
+        rentalPeriod.value = '';
+        calculateTotal();
+    });
 });
 </script>
 

@@ -33,27 +33,33 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $end_date = sanitize($_POST['end_date']);
     $status = sanitize($_POST['status']);
     $notes = sanitize($_POST['notes']);
-    
-    // Calculate total days and amount
-    $start = new DateTime($start_date);
-    $end = new DateTime($end_date);
-    $total_days = $end->diff($start)->days + 1;
-    $total_amount = $total_days * $rental['daily_rate'];
-    
-    $update_stmt = $conn->prepare("UPDATE rentals SET start_date = ?, end_date = ?, total_days = ?, total_amount = ?, status = ?, notes = ? WHERE id = ?");
-    $update_stmt->bind_param("ssidssi", $start_date, $end_date, $total_days, $total_amount, $status, $notes, $rental_id);
-    
-    if ($update_stmt->execute()) {
-        // Update car status based on rental status
-        if ($status == 'completed' || $status == 'cancelled') {
-            $conn->query("UPDATE cars SET status = 'available' WHERE id = " . $rental['car_id']);
-        }
-        header('Location: rentals.php');
-        exit();
+
+    if (empty($start_date) || empty($end_date)) {
+        $error = 'Please fill in all required fields';
+    } elseif (strtotime($end_date) < strtotime($start_date)) {
+        $error = 'End date must be after start date';
     } else {
-        $error = 'Something went wrong. Please try again.';
+        // Calculate total days and amount
+        $start = new DateTime($start_date);
+        $end = new DateTime($end_date);
+        $total_days = $end->diff($start)->days + 1;
+        $total_amount = $total_days * $rental['daily_rate'];
+
+        $update_stmt = $conn->prepare("UPDATE rentals SET start_date = ?, end_date = ?, total_days = ?, total_amount = ?, status = ?, notes = ? WHERE id = ?");
+        $update_stmt->bind_param("ssidssi", $start_date, $end_date, $total_days, $total_amount, $status, $notes, $rental_id);
+
+        if ($update_stmt->execute()) {
+            // Update car status based on rental status
+            if ($status == 'completed' || $status == 'cancelled') {
+                $conn->query("UPDATE cars SET status = 'available' WHERE id = " . $rental['car_id']);
+            }
+            header('Location: rentals.php');
+            exit();
+        } else {
+            $error = 'Something went wrong. Please try again.';
+        }
+        $update_stmt->close();
     }
-    $update_stmt->close();
 }
 
 include 'includes/header.php';
@@ -74,11 +80,22 @@ include 'includes/header.php';
                 
                 <form method="POST" action="" id="rentalEditForm">
                     <div class="row">
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-4 mb-3">
                             <label for="start_date" class="form-label">Start Date <span class="text-danger">*</span></label>
                             <input type="date" class="form-control" id="start_date" name="start_date" value="<?php echo $rental['start_date']; ?>" required>
                         </div>
-                        <div class="col-md-6 mb-3">
+
+                        <div class="col-md-4 mb-3">
+                            <label for="rental_period" class="form-label">Rental Period</label>
+                            <select class="form-select" id="rental_period" name="rental_period">
+                                <option value="">Custom</option>
+                                <option value="day">1 Day</option>
+                                <option value="week">1 Week</option>
+                                <option value="month">1 Month (30 Days)</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-4 mb-3">
                             <label for="end_date" class="form-label">End Date <span class="text-danger">*</span></label>
                             <input type="date" class="form-control" id="end_date" name="end_date" value="<?php echo $rental['end_date']; ?>" required>
                         </div>
@@ -140,12 +157,42 @@ include 'includes/header.php';
 document.addEventListener('DOMContentLoaded', function() {
     const startDate = document.getElementById('start_date');
     const endDate = document.getElementById('end_date');
+    const rentalPeriod = document.getElementById('rental_period');
     const dailyRate = <?php echo $rental['daily_rate']; ?>;
+
+    function parseDateInput(value) {
+        const parts = value.split('-').map(Number);
+        return new Date(parts[0], parts[1] - 1, parts[2]);
+    }
+
+    function formatDateInput(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    function applyRentalPeriod() {
+        if (!startDate.value || !rentalPeriod.value) {
+            return;
+        }
+
+        const end = parseDateInput(startDate.value);
+
+        if (rentalPeriod.value === 'week') {
+            end.setDate(end.getDate() + 6);
+        } else if (rentalPeriod.value === 'month') {
+            end.setDate(end.getDate() + 29);
+        }
+
+        endDate.value = formatDateInput(end);
+        endDate.min = startDate.value;
+    }
     
     function calculateTotal() {
         if (startDate.value && endDate.value) {
-            const start = new Date(startDate.value);
-            const end = new Date(endDate.value);
+            const start = parseDateInput(startDate.value);
+            const end = parseDateInput(endDate.value);
             const diffTime = end - start;
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
             
@@ -161,10 +208,19 @@ document.addEventListener('DOMContentLoaded', function() {
         if (this.value) {
             endDate.min = this.value;
         }
+        applyRentalPeriod();
         calculateTotal();
     });
     
-    endDate.addEventListener('change', calculateTotal);
+    rentalPeriod.addEventListener('change', function() {
+        applyRentalPeriod();
+        calculateTotal();
+    });
+
+    endDate.addEventListener('change', function() {
+        rentalPeriod.value = '';
+        calculateTotal();
+    });
 });
 </script>
 
