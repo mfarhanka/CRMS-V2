@@ -62,6 +62,48 @@ CREATE TABLE IF NOT EXISTS customers (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- Rentals table for agreement duration and payment schedule setup
+CREATE TABLE IF NOT EXISTS rentals (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    car_id INT NOT NULL,
+    customer_id INT NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    total_days INT NOT NULL DEFAULT 1,
+    agreement_duration VARCHAR(50),
+    payment_frequency ENUM('daily', 'weekly', 'monthly') NOT NULL DEFAULT 'monthly',
+    daily_rate DECIMAL(10,2) NOT NULL DEFAULT 0,
+    rate_amount DECIMAL(10,2) NOT NULL,
+    total_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+    total_paid DECIMAL(10,2) NOT NULL DEFAULT 0,
+    payment_status ENUM('pending', 'partial', 'paid') DEFAULT 'pending',
+    status ENUM('active', 'completed', 'cancelled') DEFAULT 'active',
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (car_id) REFERENCES cars(id) ON DELETE CASCADE,
+    FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+);
+
+-- Payment records generated from the selected daily, weekly, or monthly payment schedule
+CREATE TABLE IF NOT EXISTS rental_payment_records (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    rental_id INT NOT NULL,
+    period_start DATE NOT NULL,
+    period_end DATE NOT NULL,
+    due_date DATE NOT NULL,
+    amount_due DECIMAL(10,2) NOT NULL,
+    amount_paid DECIMAL(10,2) NOT NULL DEFAULT 0,
+    paid_date DATE,
+    status ENUM('pending', 'paid') DEFAULT 'pending',
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (rental_id) REFERENCES rentals(id) ON DELETE CASCADE
+);
+
 -- Insert default admin account
 -- Password: admin123 (hashed)
 INSERT INTO users (username, email, password, full_name, role) VALUES

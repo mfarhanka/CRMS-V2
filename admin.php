@@ -4,6 +4,7 @@ requireAdmin();
 
 $page_title = 'Admin Panel';
 $conn = getDBConnection();
+ensureRentalSchema($conn);
 $error = '';
 $success = '';
 
@@ -183,7 +184,7 @@ if (isset($_GET['delete_user'])) {
 $users = $conn->query("SELECT u.*, 
                        (SELECT COUNT(*) FROM cars WHERE user_id = u.id) as total_cars,
                        (SELECT COUNT(*) FROM rentals WHERE user_id = u.id) as total_rentals,
-                       (SELECT SUM(amount_paid) FROM rentals WHERE user_id = u.id) as total_revenue
+                       (SELECT SUM(total_paid) FROM rentals WHERE user_id = u.id) as total_revenue
                        FROM users u 
                        WHERE u.role = 'agent' 
                        ORDER BY u.created_at DESC");
@@ -209,7 +210,7 @@ $total_users = $conn->query("SELECT COUNT(*) as count FROM users WHERE role = 'a
 $total_admins = $conn->query("SELECT COUNT(*) as count FROM users WHERE role = 'admin'")->fetch_assoc()['count'];
 $total_cars = $conn->query("SELECT COUNT(*) as count FROM cars")->fetch_assoc()['count'];
 $total_rentals = $conn->query("SELECT COUNT(*) as count FROM rentals")->fetch_assoc()['count'];
-$total_revenue = $conn->query("SELECT SUM(amount_paid) as total FROM rentals")->fetch_assoc()['total'] ?? 0;
+$total_revenue = $conn->query("SELECT SUM(total_paid) as total FROM rentals")->fetch_assoc()['total'] ?? 0;
 
 include 'includes/header.php';
 ?>

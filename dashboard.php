@@ -4,13 +4,18 @@ requireLogin();
 
 $page_title = 'Dashboard';
 $conn = getDBConnection();
-ensurePricingSchema($conn);
+ensureRentalSchema($conn);
 
 if (isAdmin()) {
     $total_cars = $conn->query("SELECT COUNT(*) as count FROM cars")->fetch_assoc()['count'];
     $available_cars = $conn->query("SELECT COUNT(*) as count FROM cars WHERE status = 'available'")->fetch_assoc()['count'];
     $maintenance_cars = $conn->query("SELECT COUNT(*) as count FROM cars WHERE status = 'maintenance'")->fetch_assoc()['count'];
     $total_customers = $conn->query("SELECT COUNT(*) as count FROM customers")->fetch_assoc()['count'];
+    $active_rentals = $conn->query("SELECT COUNT(*) as count FROM rentals WHERE status = 'active'")->fetch_assoc()['count'];
+    $pending_payments = $conn->query("SELECT COUNT(*) as count
+                                      FROM rental_payment_records pr
+                                      JOIN rentals r ON pr.rental_id = r.id
+                                      WHERE pr.status = 'pending' AND r.status = 'active'")->fetch_assoc()['count'];
     $recent_cars = $conn->query("SELECT c.*, u.company_name, u.full_name
                                  FROM cars c
                                  JOIN users u ON c.user_id = u.id
@@ -21,6 +26,8 @@ if (isAdmin()) {
     $available_cars = $conn->query("SELECT COUNT(*) as count FROM cars WHERE user_id = $user_id AND status = 'available'")->fetch_assoc()['count'];
     $maintenance_cars = $conn->query("SELECT COUNT(*) as count FROM cars WHERE user_id = $user_id AND status = 'maintenance'")->fetch_assoc()['count'];
     $total_customers = $conn->query("SELECT COUNT(*) as count FROM customers WHERE user_id = $user_id")->fetch_assoc()['count'];
+    $active_rentals = 0;
+    $pending_payments = 0;
     $recent_cars = $conn->query("SELECT * FROM cars WHERE user_id = $user_id ORDER BY created_at DESC LIMIT 5");
 }
 
@@ -98,6 +105,40 @@ include 'includes/header.php';
             </div>
         </div>
     </div>
+
+    <?php if (isAdmin()): ?>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <p class="text-muted mb-1">Active Rentals</p>
+                        <h3 class="mb-0"><?php echo $active_rentals; ?></h3>
+                    </div>
+                    <div class="bg-primary bg-opacity-10 p-3 rounded">
+                        <i class="bi bi-clipboard-check fs-2 text-primary"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <p class="text-muted mb-1">Pending Payments</p>
+                        <h3 class="mb-0"><?php echo $pending_payments; ?></h3>
+                    </div>
+                    <div class="bg-danger bg-opacity-10 p-3 rounded">
+                        <i class="bi bi-clock-history fs-2 text-danger"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
 </div>
 
 <div class="row">
