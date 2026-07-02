@@ -6,6 +6,7 @@ $page_title = 'Add New Car';
 $error = '';
 $success = '';
 $conn = getDBConnection();
+ensurePricingSchema($conn);
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $brand = sanitize($_POST['brand']);
@@ -14,6 +15,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $color = sanitize($_POST['color']);
     $plate_number = sanitize($_POST['plate_number']);
     $daily_rate = floatval($_POST['daily_rate']);
+    $weekly_rate = ($_POST['weekly_rate'] ?? '') !== '' ? floatval($_POST['weekly_rate']) : null;
+    $monthly_rate = ($_POST['monthly_rate'] ?? '') !== '' ? floatval($_POST['monthly_rate']) : null;
     $status = sanitize($_POST['status']);
     $description = sanitize($_POST['description']);
     $user_id = intval($_SESSION['user_id']);
@@ -41,8 +44,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         if ($result->num_rows > 0) {
             $error = 'A car with this plate number already exists';
         } else {
-            $insert_stmt = $conn->prepare("INSERT INTO cars (user_id, brand, model, year, color, plate_number, daily_rate, status, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $insert_stmt->bind_param("ississdss", $user_id, $brand, $model, $year, $color, $plate_number, $daily_rate, $status, $description);
+            $insert_stmt = $conn->prepare("INSERT INTO cars (user_id, brand, model, year, color, plate_number, daily_rate, weekly_rate, monthly_rate, status, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $insert_stmt->bind_param("ississdddss", $user_id, $brand, $model, $year, $color, $plate_number, $daily_rate, $weekly_rate, $monthly_rate, $status, $description);
 
             if ($insert_stmt->execute()) {
                 header('Location: cars.php');
@@ -105,11 +108,23 @@ include 'includes/header.php';
                     </div>
                     
                     <div class="row">
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-4 mb-3">
                             <label for="daily_rate" class="form-label">Daily Rate (RM) <span class="text-danger">*</span></label>
                             <input type="number" class="form-control" id="daily_rate" name="daily_rate" step="0.01" min="0" required>
                         </div>
                         
+                        <div class="col-md-4 mb-3">
+                            <label for="weekly_rate" class="form-label">Weekly Rate (RM)</label>
+                            <input type="number" class="form-control" id="weekly_rate" name="weekly_rate" step="0.01" min="0">
+                        </div>
+                        
+                        <div class="col-md-4 mb-3">
+                            <label for="monthly_rate" class="form-label">Monthly Rate (RM)</label>
+                            <input type="number" class="form-control" id="monthly_rate" name="monthly_rate" step="0.01" min="0">
+                        </div>
+                    </div>
+
+                    <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="status" class="form-label">Status</label>
                             <select class="form-select" id="status" name="status">

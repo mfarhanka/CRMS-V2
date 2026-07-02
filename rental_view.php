@@ -6,6 +6,7 @@ $page_title = 'View Rental';
 $rental_id = intval($_GET['id'] ?? 0);
 
 $conn = getDBConnection();
+ensurePricingSchema($conn);
 
 // Get rental details
 if (isAdmin()) {
@@ -120,6 +121,13 @@ include 'includes/header.php';
                             <div class="col-md-3">
                                 <p class="mb-1 text-muted">Total Days</p>
                                 <h6><?php echo $rental['total_days']; ?> days</h6>
+                            </div>
+                            <div class="col-md-3">
+                                <p class="mb-1 text-muted">Billing Plan</p>
+                                <h6>
+                                    <?php echo rentalPlanLabel($rental['billing_plan'] ?? 'daily'); ?>
+                                    <small class="text-muted d-block"><?php echo intval($rental['billing_units'] ?? $rental['total_days']); ?> x <?php echo formatCurrency($rental['rate_amount'] ?? $rental['daily_rate']); ?></small>
+                                </h6>
                             </div>
                             <div class="col-md-3">
                                 <p class="mb-1 text-muted">Status</p>

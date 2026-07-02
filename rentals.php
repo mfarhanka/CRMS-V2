@@ -4,6 +4,7 @@ requireLogin();
 
 $page_title = 'Rentals Management';
 $conn = getDBConnection();
+ensurePricingSchema($conn);
 $user_id = intval($_SESSION['user_id']);
 $form_error = '';
 $open_modal = '';
@@ -16,6 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $customer_id = intval($_POST['customer_id']);
         $start_date = sanitize($_POST['start_date']);
         $end_date = sanitize($_POST['end_date']);
+        $billing_plan = sanitize($_POST['billing_plan'] ?? 'daily');
         $payment_status = sanitize($_POST['payment_status']);
         $amount_paid = floatval($_POST['amount_paid']);
         $notes = sanitize($_POST['notes']);
@@ -23,17 +25,20 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         if (empty($car_id) || empty($customer_id) || empty($start_date) || empty($end_date)) {
             $form_error = 'Please fill in all required fields';
             $open_modal = 'addRentalModal';
+        } elseif (!array_key_exists($billing_plan, rentalPlanOptions())) {
+            $form_error = 'Please select a valid billing plan';
+            $open_modal = 'addRentalModal';
         } elseif (strtotime($end_date) < strtotime($start_date)) {
             $form_error = 'End date must be after start date';
             $open_modal = 'addRentalModal';
         } else {
             if (isAdmin()) {
-                $car_stmt = $conn->prepare("SELECT user_id, daily_rate FROM cars WHERE id = ? AND status = 'available'");
+                $car_stmt = $conn->prepare("SELECT user_id, daily_rate, weekly_rate, monthly_rate FROM cars WHERE id = ? AND status = 'available'");
                 $car_stmt->bind_param("i", $car_id);
                 $customer_stmt = $conn->prepare("SELECT user_id FROM customers WHERE id = ?");
                 $customer_stmt->bind_param("i", $customer_id);
             } else {
-                $car_stmt = $conn->prepare("SELECT user_id, daily_rate FROM cars WHERE id = ? AND user_id = ? AND status = 'available'");
+                $car_stmt = $conn->prepare("SELECT user_id, daily_rate, weekly_rate, monthly_rate FROM cars WHERE id = ? AND user_id = ? AND status = 'available'");
                 $car_stmt->bind_param("ii", $car_id, $user_id);
                 $customer_stmt = $conn->prepare("SELECT user_id FROM customers WHERE id = ? AND user_id = ?");
                 $customer_stmt->bind_param("ii", $customer_id, $user_id);
@@ -60,7 +65,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $open_modal = 'addRentalModal';
                 }
 
-                $daily_rate = $car['daily_rate'];
+                $daily_rate = floatval($car['daily_rate']);
+                $rate_amount = floatval($car[$billing_plan . '_rate'] ?? 0);
+                if ($rate_amount <= 0) {
+                    $rate_amount = $daily_rate * (rentalPlanOptions()[$billing_plan]['days'] ?? 1);
+                }
             }
 
             $car_stmt->close();
@@ -70,10 +79,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $start = new DateTime($start_date);
                 $end = new DateTime($end_date);
                 $total_days = $end->diff($start)->days + 1;
-                $total_amount = $total_days * $daily_rate;
+                $billing_units = calculateBillingUnits($total_days, $billing_plan);
+                $total_amount = $billing_units * $rate_amount;
 
-                $stmt = $conn->prepare("INSERT INTO rentals (user_id, car_id, customer_id, start_date, end_date, total_days, daily_rate, total_amount, payment_status, amount_paid, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-                $stmt->bind_param("iiissiidsds", $rental_user_id, $car_id, $customer_id, $start_date, $end_date, $total_days, $daily_rate, $total_amount, $payment_status, $amount_paid, $notes);
+                $stmt = $conn->prepare("INSERT INTO rentals (user_id, car_id, customer_id, start_date, end_date, total_days, billing_plan, daily_rate, rate_amount, billing_units, total_amount, payment_status, amount_paid, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt->bind_param("iiissisddidsds", $rental_user_id, $car_id, $customer_id, $start_date, $end_date, $total_days, $billing_plan, $daily_rate, $rate_amount, $billing_units, $total_amount, $payment_status, $amount_paid, $notes);
 
                 if ($stmt->execute()) {
                     $status_stmt = $conn->prepare("UPDATE cars SET status = 'rented' WHERE id = ?");
@@ -93,21 +103,25 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $rental_id = intval($_POST['rental_id']);
         $start_date = sanitize($_POST['start_date']);
         $end_date = sanitize($_POST['end_date']);
+        $billing_plan = sanitize($_POST['billing_plan'] ?? 'daily');
         $status = sanitize($_POST['status']);
         $notes = sanitize($_POST['notes']);
 
         if (empty($rental_id) || empty($start_date) || empty($end_date)) {
             $form_error = 'Please fill in all required fields';
             $open_modal = 'editRentalModal';
+        } elseif (!array_key_exists($billing_plan, rentalPlanOptions())) {
+            $form_error = 'Please select a valid billing plan';
+            $open_modal = 'editRentalModal';
         } elseif (strtotime($end_date) < strtotime($start_date)) {
             $form_error = 'End date must be after start date';
             $open_modal = 'editRentalModal';
         } else {
             if (isAdmin()) {
-                $rental_stmt = $conn->prepare("SELECT car_id, daily_rate FROM rentals WHERE id = ?");
+                $rental_stmt = $conn->prepare("SELECT r.car_id, c.daily_rate, c.weekly_rate, c.monthly_rate FROM rentals r JOIN cars c ON r.car_id = c.id WHERE r.id = ?");
                 $rental_stmt->bind_param("i", $rental_id);
             } else {
-                $rental_stmt = $conn->prepare("SELECT car_id, daily_rate FROM rentals WHERE id = ? AND user_id = ?");
+                $rental_stmt = $conn->prepare("SELECT r.car_id, c.daily_rate, c.weekly_rate, c.monthly_rate FROM rentals r JOIN cars c ON r.car_id = c.id WHERE r.id = ? AND r.user_id = ?");
                 $rental_stmt->bind_param("ii", $rental_id, $user_id);
             }
 
@@ -122,13 +136,24 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $start = new DateTime($start_date);
                 $end = new DateTime($end_date);
                 $total_days = $end->diff($start)->days + 1;
-                $total_amount = $total_days * $rental['daily_rate'];
+                $daily_rate = floatval($rental['daily_rate']);
+                $rate_amount = floatval($rental[$billing_plan . '_rate'] ?? 0);
+                if ($rate_amount <= 0) {
+                    $rate_amount = $daily_rate * (rentalPlanOptions()[$billing_plan]['days'] ?? 1);
+                }
+                $billing_units = calculateBillingUnits($total_days, $billing_plan);
+                $total_amount = $billing_units * $rate_amount;
 
-                $update_stmt = $conn->prepare("UPDATE rentals SET start_date = ?, end_date = ?, total_days = ?, total_amount = ?, status = ?, notes = ? WHERE id = ?");
-                $update_stmt->bind_param("ssidssi", $start_date, $end_date, $total_days, $total_amount, $status, $notes, $rental_id);
+                $update_stmt = $conn->prepare("UPDATE rentals SET start_date = ?, end_date = ?, total_days = ?, billing_plan = ?, rate_amount = ?, billing_units = ?, total_amount = ?, status = ?, notes = ? WHERE id = ?");
+                $update_stmt->bind_param("ssisdidssi", $start_date, $end_date, $total_days, $billing_plan, $rate_amount, $billing_units, $total_amount, $status, $notes, $rental_id);
 
                 if ($update_stmt->execute()) {
-                    if ($status == 'completed' || $status == 'cancelled') {
+                    if ($status == 'active') {
+                        $status_stmt = $conn->prepare("UPDATE cars SET status = 'rented' WHERE id = ?");
+                        $status_stmt->bind_param("i", $rental['car_id']);
+                        $status_stmt->execute();
+                        $status_stmt->close();
+                    } elseif ($status == 'completed' || $status == 'cancelled') {
                         $status_stmt = $conn->prepare("UPDATE cars SET status = 'available' WHERE id = ?");
                         $status_stmt->bind_param("i", $rental['car_id']);
                         $status_stmt->execute();
@@ -160,8 +185,8 @@ if (isset($_GET['duplicate'])) {
     if ($dup_result->num_rows > 0) {
         $dup_rental = $dup_result->fetch_assoc();
 
-        $stmt = $conn->prepare("INSERT INTO rentals (user_id, car_id, customer_id, start_date, end_date, total_days, daily_rate, total_amount, payment_status, amount_paid, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 'active', ?)");
-        $stmt->bind_param("iiissiids", $dup_rental['user_id'], $dup_rental['car_id'], $dup_rental['customer_id'], $dup_rental['start_date'], $dup_rental['end_date'], $dup_rental['total_days'], $dup_rental['daily_rate'], $dup_rental['total_amount'], $dup_rental['notes']);
+        $stmt = $conn->prepare("INSERT INTO rentals (user_id, car_id, customer_id, start_date, end_date, total_days, billing_plan, daily_rate, rate_amount, billing_units, total_amount, payment_status, amount_paid, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 'active', ?)");
+        $stmt->bind_param("iiissisddids", $dup_rental['user_id'], $dup_rental['car_id'], $dup_rental['customer_id'], $dup_rental['start_date'], $dup_rental['end_date'], $dup_rental['total_days'], $dup_rental['billing_plan'], $dup_rental['daily_rate'], $dup_rental['rate_amount'], $dup_rental['billing_units'], $dup_rental['total_amount'], $dup_rental['notes']);
         $stmt->execute();
         $stmt->close();
     }
@@ -201,14 +226,14 @@ $customers = isAdmin()
     : $conn->query("SELECT * FROM customers WHERE user_id = $user_id ORDER BY full_name");
 
 if (isAdmin()) {
-    $rentals = $conn->query("SELECT r.*, c.brand, c.model, c.plate_number, cu.full_name as customer_name, u.company_name, u.full_name as agent_name
+    $rentals = $conn->query("SELECT r.*, c.brand, c.model, c.plate_number, c.weekly_rate, c.monthly_rate, cu.full_name as customer_name, u.company_name, u.full_name as agent_name
                              FROM rentals r
                              JOIN cars c ON r.car_id = c.id
                              JOIN customers cu ON r.customer_id = cu.id
                              JOIN users u ON r.user_id = u.id
                              ORDER BY r.start_date DESC");
 } else {
-    $rentals = $conn->query("SELECT r.*, c.brand, c.model, c.plate_number, cu.full_name as customer_name
+    $rentals = $conn->query("SELECT r.*, c.brand, c.model, c.plate_number, c.weekly_rate, c.monthly_rate, cu.full_name as customer_name
                              FROM rentals r
                              JOIN cars c ON r.car_id = c.id
                              JOIN customers cu ON r.customer_id = cu.id
@@ -251,8 +276,10 @@ include 'includes/header.php';
                         <?php endif; ?>
                         <th>Start Date</th>
                         <th>End Date</th>
+                        <th>Plan</th>
                         <th>Total Amount</th>
                         <th>Paid</th>
+                        <th>Balance</th>
                         <th>Status</th>
                         <th>Actions</th>
                     </tr>
@@ -270,8 +297,13 @@ include 'includes/header.php';
                         <?php endif; ?>
                         <td><?php echo formatDate($rental['start_date']); ?></td>
                         <td><?php echo formatDate($rental['end_date']); ?></td>
+                        <td>
+                            <span class="badge bg-light text-dark border"><?php echo rentalPlanLabel($rental['billing_plan'] ?? 'daily'); ?></span><br>
+                            <small class="text-muted"><?php echo intval($rental['billing_units'] ?? $rental['total_days']); ?> x <?php echo formatCurrency($rental['rate_amount'] ?? $rental['daily_rate']); ?></small>
+                        </td>
                         <td><?php echo formatCurrency($rental['total_amount']); ?></td>
                         <td><?php echo formatCurrency($rental['amount_paid']); ?></td>
+                        <td><?php echo formatCurrency($rental['total_amount'] - $rental['amount_paid']); ?></td>
                         <td>
                             <?php
                             $status_class = '';
@@ -296,6 +328,11 @@ include 'includes/header.php';
                                     data-start-date="<?php echo $rental['start_date']; ?>"
                                     data-end-date="<?php echo $rental['end_date']; ?>"
                                     data-daily-rate="<?php echo $rental['daily_rate']; ?>"
+                                    data-weekly-rate="<?php echo $rental['weekly_rate']; ?>"
+                                    data-monthly-rate="<?php echo $rental['monthly_rate']; ?>"
+                                    data-billing-plan="<?php echo $rental['billing_plan'] ?? 'daily'; ?>"
+                                    data-rate-amount="<?php echo $rental['rate_amount'] ?? $rental['daily_rate']; ?>"
+                                    data-billing-units="<?php echo $rental['billing_units'] ?? $rental['total_days']; ?>"
                                     data-total-days="<?php echo $rental['total_days']; ?>"
                                     data-total-amount="<?php echo $rental['total_amount']; ?>"
                                     data-status="<?php echo $rental['status']; ?>"
@@ -353,7 +390,10 @@ include 'includes/header.php';
                     <select class="form-select rental-car-select" id="add_car_id" name="car_id" required>
                         <option value="">Choose a car...</option>
                         <?php while ($car = $available_cars->fetch_assoc()): ?>
-                        <option value="<?php echo $car['id']; ?>" data-rate="<?php echo $car['daily_rate']; ?>">
+                        <option value="<?php echo $car['id']; ?>"
+                                data-daily-rate="<?php echo $car['daily_rate']; ?>"
+                                data-weekly-rate="<?php echo $car['weekly_rate']; ?>"
+                                data-monthly-rate="<?php echo $car['monthly_rate']; ?>">
                             <?php echo $car['brand'] . ' ' . $car['model'] . ' - ' . $car['plate_number']; ?>
                             (<?php echo formatCurrency($car['daily_rate']); ?>/day)
                             <?php if (isAdmin()): ?>
@@ -385,12 +425,11 @@ include 'includes/header.php';
                         <input type="date" class="form-control rental-start-date" id="add_start_date" name="start_date" required>
                     </div>
                     <div class="col-md-4 mb-3">
-                        <label for="add_rental_period" class="form-label">Rental Period</label>
-                        <select class="form-select rental-period" id="add_rental_period" name="rental_period">
-                            <option value="">Custom</option>
-                            <option value="day">1 Day</option>
-                            <option value="week">1 Week</option>
-                            <option value="month">1 Month (30 Days)</option>
+                        <label for="add_billing_plan" class="form-label">Billing Plan</label>
+                        <select class="form-select rental-billing-plan" id="add_billing_plan" name="billing_plan">
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
                         </select>
                     </div>
                     <div class="col-md-4 mb-3">
@@ -399,18 +438,32 @@ include 'includes/header.php';
                     </div>
                 </div>
 
+                <div class="mb-3">
+                    <label for="add_rental_period" class="form-label">Quick Duration</label>
+                    <select class="form-select rental-period" id="add_rental_period" name="rental_period">
+                        <option value="">Custom dates</option>
+                        <option value="day">1 Day</option>
+                        <option value="week">1 Week</option>
+                        <option value="month">1 Month (30 Days)</option>
+                    </select>
+                </div>
+
                 <div class="card bg-light mb-3">
                     <div class="card-body">
                         <div class="row">
-                            <div class="col-md-4">
-                                <p class="mb-1 text-muted">Daily Rate</p>
+                            <div class="col-md-3">
+                                <p class="mb-1 text-muted">Rate</p>
                                 <h5 class="rental-rate-display">RM 0.00</h5>
                             </div>
-                            <div class="col-md-4">
-                                <p class="mb-1 text-muted">Total Days</p>
+                            <div class="col-md-3">
+                                <p class="mb-1 text-muted">Days</p>
                                 <h5 class="rental-days-display">0</h5>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
+                                <p class="mb-1 text-muted">Billable Units</p>
+                                <h5 class="rental-units-display">0</h5>
+                            </div>
+                            <div class="col-md-3">
                                 <p class="mb-1 text-muted">Total Amount</p>
                                 <h5 class="rental-amount-display">RM 0.00</h5>
                             </div>
@@ -467,12 +520,11 @@ include 'includes/header.php';
                         <input type="date" class="form-control rental-start-date" id="edit_start_date" name="start_date" required>
                     </div>
                     <div class="col-md-4 mb-3">
-                        <label for="edit_rental_period" class="form-label">Rental Period</label>
-                        <select class="form-select rental-period" id="edit_rental_period" name="rental_period">
-                            <option value="">Custom</option>
-                            <option value="day">1 Day</option>
-                            <option value="week">1 Week</option>
-                            <option value="month">1 Month (30 Days)</option>
+                        <label for="edit_billing_plan" class="form-label">Billing Plan</label>
+                        <select class="form-select rental-billing-plan" id="edit_billing_plan" name="billing_plan">
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
                         </select>
                     </div>
                     <div class="col-md-4 mb-3">
@@ -481,18 +533,32 @@ include 'includes/header.php';
                     </div>
                 </div>
 
+                <div class="mb-3">
+                    <label for="edit_rental_period" class="form-label">Quick Duration</label>
+                    <select class="form-select rental-period" id="edit_rental_period" name="rental_period">
+                        <option value="">Custom dates</option>
+                        <option value="day">1 Day</option>
+                        <option value="week">1 Week</option>
+                        <option value="month">1 Month (30 Days)</option>
+                    </select>
+                </div>
+
                 <div class="card bg-light mb-3">
                     <div class="card-body">
                         <div class="row">
-                            <div class="col-md-4">
-                                <p class="mb-1 text-muted">Daily Rate</p>
+                            <div class="col-md-3">
+                                <p class="mb-1 text-muted">Rate</p>
                                 <h6 class="rental-rate-display">RM 0.00</h6>
                             </div>
-                            <div class="col-md-4">
-                                <p class="mb-1 text-muted">Total Days</p>
+                            <div class="col-md-3">
+                                <p class="mb-1 text-muted">Days</p>
                                 <h6 class="rental-days-display">0 days</h6>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
+                                <p class="mb-1 text-muted">Billable Units</p>
+                                <h6 class="rental-units-display">0</h6>
+                            </div>
+                            <div class="col-md-3">
                                 <p class="mb-1 text-muted">Total Amount</p>
                                 <h6 class="rental-amount-display">RM 0.00</h6>
                             </div>
@@ -549,14 +615,35 @@ document.addEventListener('DOMContentLoaded', function() {
         return 'RM ' + Number(amount || 0).toFixed(2);
     }
 
-    function getDailyRate(form) {
+    function getBillingPlan(form) {
+        return form.querySelector('.rental-billing-plan')?.value || 'daily';
+    }
+
+    function getPlanDays(plan) {
+        if (plan === 'weekly') {
+            return 7;
+        }
+
+        if (plan === 'monthly') {
+            return 30;
+        }
+
+        return 1;
+    }
+
+    function getRate(form) {
+        const plan = getBillingPlan(form);
         const carSelect = form.querySelector('.rental-car-select');
         if (carSelect) {
             const selectedCar = carSelect.options[carSelect.selectedIndex];
-            return parseFloat(selectedCar?.dataset.rate) || 0;
+            const planRate = parseFloat(selectedCar?.dataset[`${plan}Rate`]) || 0;
+            const dailyRate = parseFloat(selectedCar?.dataset.dailyRate) || 0;
+            return planRate > 0 ? planRate : dailyRate * getPlanDays(plan);
         }
 
-        return parseFloat(form.dataset.dailyRate) || 0;
+        const planRate = parseFloat(form.dataset[`${plan}Rate`]) || 0;
+        const dailyRate = parseFloat(form.dataset.dailyRate) || 0;
+        return planRate > 0 ? planRate : dailyRate * getPlanDays(plan);
     }
 
     function applyRentalPeriod(form) {
@@ -583,7 +670,8 @@ document.addEventListener('DOMContentLoaded', function() {
     function calculateTotal(form) {
         const startDate = form.querySelector('.rental-start-date');
         const endDate = form.querySelector('.rental-end-date');
-        const dailyRate = getDailyRate(form);
+        const rate = getRate(form);
+        const plan = getBillingPlan(form);
 
         if (!startDate.value || !endDate.value) {
             return;
@@ -594,9 +682,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
 
         if (diffDays > 0) {
-            form.querySelector('.rental-rate-display').textContent = formatCurrency(dailyRate);
+            const units = Math.max(1, Math.ceil(diffDays / getPlanDays(plan)));
+            const unitLabel = plan === 'daily' ? 'day' : (plan === 'weekly' ? 'week' : 'month');
+            form.querySelector('.rental-rate-display').textContent = formatCurrency(rate) + ' / ' + unitLabel;
             form.querySelector('.rental-days-display').textContent = form.dataset.mode === 'edit' ? diffDays + ' days' : diffDays;
-            form.querySelector('.rental-amount-display').textContent = formatCurrency(diffDays * dailyRate);
+            form.querySelector('.rental-units-display').textContent = units;
+            form.querySelector('.rental-amount-display').textContent = formatCurrency(units * rate);
         }
     }
 
@@ -605,6 +696,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const startDate = form.querySelector('.rental-start-date');
         const endDate = form.querySelector('.rental-end-date');
         const rentalPeriod = form.querySelector('.rental-period');
+        const billingPlan = form.querySelector('.rental-billing-plan');
 
         if (carSelect) {
             carSelect.addEventListener('change', function() {
@@ -623,6 +715,10 @@ document.addEventListener('DOMContentLoaded', function() {
             calculateTotal(form);
         });
 
+        billingPlan.addEventListener('change', function() {
+            calculateTotal(form);
+        });
+
         endDate.addEventListener('change', function() {
             rentalPeriod.value = '';
             calculateTotal(form);
@@ -633,17 +729,21 @@ document.addEventListener('DOMContentLoaded', function() {
         button.addEventListener('click', function() {
             const form = document.querySelector('#editRentalModal .rental-form');
             form.dataset.dailyRate = this.dataset.dailyRate;
+            form.dataset.weeklyRate = this.dataset.weeklyRate;
+            form.dataset.monthlyRate = this.dataset.monthlyRate;
 
             document.getElementById('edit_rental_id').value = this.dataset.rentalId;
             document.getElementById('edit_start_date').value = this.dataset.startDate;
             document.getElementById('edit_end_date').value = this.dataset.endDate;
             document.getElementById('edit_end_date').min = this.dataset.startDate;
             document.getElementById('edit_rental_period').value = '';
+            document.getElementById('edit_billing_plan').value = this.dataset.billingPlan || 'daily';
             document.getElementById('edit_status').value = this.dataset.status;
             document.getElementById('edit_notes').value = this.dataset.notes || '';
 
-            form.querySelector('.rental-rate-display').textContent = formatCurrency(this.dataset.dailyRate);
+            form.querySelector('.rental-rate-display').textContent = formatCurrency(this.dataset.rateAmount);
             form.querySelector('.rental-days-display').textContent = this.dataset.totalDays + ' days';
+            form.querySelector('.rental-units-display').textContent = this.dataset.billingUnits || this.dataset.totalDays;
             form.querySelector('.rental-amount-display').textContent = formatCurrency(this.dataset.totalAmount);
         });
     });

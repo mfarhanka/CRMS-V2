@@ -6,6 +6,7 @@ $page_title = 'Dashboard';
 
 // Get statistics
 $conn = getDBConnection();
+ensurePricingSchema($conn);
 
 if (isAdmin()) {
     // Admin sees all data
@@ -13,6 +14,7 @@ if (isAdmin()) {
     $available_cars = $conn->query("SELECT COUNT(*) as count FROM cars WHERE status = 'available'")->fetch_assoc()['count'];
     $total_rentals = $conn->query("SELECT COUNT(*) as count FROM rentals")->fetch_assoc()['count'];
     $active_rentals = $conn->query("SELECT COUNT(*) as count FROM rentals WHERE status = 'active'")->fetch_assoc()['count'];
+    $overdue_rentals = $conn->query("SELECT COUNT(*) as count FROM rentals WHERE status = 'active' AND end_date < CURDATE()")->fetch_assoc()['count'];
     $total_customers = $conn->query("SELECT COUNT(*) as count FROM customers")->fetch_assoc()['count'];
     $total_revenue = $conn->query("SELECT SUM(amount_paid) as total FROM rentals")->fetch_assoc()['total'] ?? 0;
     
@@ -30,6 +32,7 @@ if (isAdmin()) {
     $available_cars = $conn->query("SELECT COUNT(*) as count FROM cars WHERE user_id = $user_id AND status = 'available'")->fetch_assoc()['count'];
     $total_rentals = $conn->query("SELECT COUNT(*) as count FROM rentals WHERE user_id = $user_id")->fetch_assoc()['count'];
     $active_rentals = $conn->query("SELECT COUNT(*) as count FROM rentals WHERE user_id = $user_id AND status = 'active'")->fetch_assoc()['count'];
+    $overdue_rentals = $conn->query("SELECT COUNT(*) as count FROM rentals WHERE user_id = $user_id AND status = 'active' AND end_date < CURDATE()")->fetch_assoc()['count'];
     $total_customers = $conn->query("SELECT COUNT(*) as count FROM customers WHERE user_id = $user_id")->fetch_assoc()['count'];
     $total_revenue = $conn->query("SELECT SUM(amount_paid) as total FROM rentals WHERE user_id = $user_id")->fetch_assoc()['total'] ?? 0;
     
@@ -63,6 +66,22 @@ include 'includes/header.php';
                     </div>
                     <div class="bg-dark bg-opacity-10 p-3 rounded">
                         <i class="bi bi-car-front fs-2 text-dark"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <p class="text-muted mb-1">Overdue Returns</p>
+                        <h3 class="mb-0"><?php echo $overdue_rentals; ?></h3>
+                    </div>
+                    <div class="bg-danger bg-opacity-10 p-3 rounded">
+                        <i class="bi bi-exclamation-triangle fs-2 text-danger"></i>
                     </div>
                 </div>
             </div>
@@ -169,6 +188,7 @@ include 'includes/header.php';
                                 <?php endif; ?>
                                 <th>Start Date</th>
                                 <th>End Date</th>
+                                <th>Plan</th>
                                 <th>Total Amount</th>
                                 <th>Status</th>
                             </tr>
@@ -183,6 +203,7 @@ include 'includes/header.php';
                                 <?php endif; ?>
                                 <td><?php echo formatDate($rental['start_date']); ?></td>
                                 <td><?php echo formatDate($rental['end_date']); ?></td>
+                                <td><?php echo rentalPlanLabel($rental['billing_plan'] ?? 'daily'); ?></td>
                                 <td><?php echo formatCurrency($rental['total_amount']); ?></td>
                                 <td>
                                     <?php

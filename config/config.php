@@ -84,4 +84,62 @@ function formatCurrency($amount) {
 function formatDate($date) {
     return date('M d, Y', strtotime($date));
 }
+
+function rentalPlanOptions() {
+    return [
+        'daily' => ['label' => 'Daily', 'days' => 1],
+        'weekly' => ['label' => 'Weekly', 'days' => 7],
+        'monthly' => ['label' => 'Monthly', 'days' => 30],
+    ];
+}
+
+function rentalPlanLabel($plan) {
+    $plans = rentalPlanOptions();
+    return $plans[$plan]['label'] ?? 'Daily';
+}
+
+function calculateBillingUnits($total_days, $billing_plan) {
+    $plans = rentalPlanOptions();
+    $days_per_unit = $plans[$billing_plan]['days'] ?? 1;
+    return max(1, (int) ceil(max(1, (int) $total_days) / $days_per_unit));
+}
+
+function tableColumnExists($conn, $table, $column) {
+    $schema = DB_NAME;
+    $stmt = $conn->prepare("SELECT COUNT(*) AS count
+                            FROM INFORMATION_SCHEMA.COLUMNS
+                            WHERE TABLE_SCHEMA = ?
+                              AND TABLE_NAME = ?
+                              AND COLUMN_NAME = ?");
+    $stmt->bind_param("sss", $schema, $table, $column);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $exists = intval($result->fetch_assoc()['count'] ?? 0) > 0;
+    $stmt->close();
+    return $exists;
+}
+
+function ensurePricingSchema($conn) {
+    if (!tableColumnExists($conn, 'cars', 'weekly_rate')) {
+        $conn->query("ALTER TABLE cars ADD COLUMN weekly_rate DECIMAL(10,2) NULL AFTER daily_rate");
+    }
+
+    if (!tableColumnExists($conn, 'cars', 'monthly_rate')) {
+        $conn->query("ALTER TABLE cars ADD COLUMN monthly_rate DECIMAL(10,2) NULL AFTER weekly_rate");
+    }
+
+    if (!tableColumnExists($conn, 'rentals', 'billing_plan')) {
+        $conn->query("ALTER TABLE rentals ADD COLUMN billing_plan ENUM('daily', 'weekly', 'monthly') DEFAULT 'daily' AFTER total_days");
+    }
+
+    if (!tableColumnExists($conn, 'rentals', 'rate_amount')) {
+        $conn->query("ALTER TABLE rentals ADD COLUMN rate_amount DECIMAL(10,2) NULL AFTER daily_rate");
+        $conn->query("UPDATE rentals SET rate_amount = daily_rate WHERE rate_amount IS NULL");
+    }
+
+    if (!tableColumnExists($conn, 'rentals', 'billing_units')) {
+        $conn->query("ALTER TABLE rentals ADD COLUMN billing_units INT NOT NULL DEFAULT 1 AFTER rate_amount");
+        $conn->query("UPDATE rentals SET billing_units = total_days WHERE billing_units = 1 AND total_days > 1");
+    }
+}
 ?>

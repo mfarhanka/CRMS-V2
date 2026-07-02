@@ -4,6 +4,7 @@ requireLogin();
 
 $page_title = 'Cars Management';
 $conn = getDBConnection();
+ensurePricingSchema($conn);
 $user_id = $_SESSION['user_id'];
 
 // Handle delete
@@ -17,12 +18,20 @@ if (isset($_GET['delete'])) {
 
 // Get cars
 if (isAdmin()) {
-    $cars = $conn->query("SELECT c.*, u.company_name, u.full_name 
+    $cars = $conn->query("SELECT c.*, u.company_name, u.full_name,
+                                 r.id AS active_rental_id, r.end_date AS active_end_date, cu.full_name AS active_customer
                           FROM cars c 
                           JOIN users u ON c.user_id = u.id 
+                          LEFT JOIN rentals r ON r.car_id = c.id AND r.status = 'active'
+                          LEFT JOIN customers cu ON r.customer_id = cu.id
                           ORDER BY c.created_at DESC");
 } else {
-    $cars = $conn->query("SELECT * FROM cars WHERE user_id = $user_id ORDER BY created_at DESC");
+    $cars = $conn->query("SELECT c.*, r.id AS active_rental_id, r.end_date AS active_end_date, cu.full_name AS active_customer
+                          FROM cars c
+                          LEFT JOIN rentals r ON r.car_id = c.id AND r.status = 'active'
+                          LEFT JOIN customers cu ON r.customer_id = cu.id
+                          WHERE c.user_id = $user_id
+                          ORDER BY c.created_at DESC");
 }
 
 include 'includes/header.php';
@@ -52,8 +61,9 @@ include 'includes/header.php';
                         <th>Model</th>
                         <th>Year</th>
                         <th>Color</th>
-                        <th>Daily Rate</th>
+                        <th>Rates</th>
                         <th>Status</th>
+                        <th>Current Renter</th>
                         <?php if (isAdmin()): ?>
                         <th>Owner</th>
                         <?php endif; ?>
@@ -68,7 +78,13 @@ include 'includes/header.php';
                         <td><?php echo $car['model']; ?></td>
                         <td><?php echo $car['year']; ?></td>
                         <td><?php echo $car['color']; ?></td>
-                        <td><?php echo formatCurrency($car['daily_rate']); ?></td>
+                        <td>
+                            <strong><?php echo formatCurrency($car['daily_rate']); ?>/day</strong><br>
+                            <small class="text-muted">
+                                <?php echo $car['weekly_rate'] ? formatCurrency($car['weekly_rate']) . '/week' : 'No weekly rate'; ?><br>
+                                <?php echo $car['monthly_rate'] ? formatCurrency($car['monthly_rate']) . '/month' : 'No monthly rate'; ?>
+                            </small>
+                        </td>
                         <td>
                             <?php
                             $status_class = '';
@@ -79,6 +95,16 @@ include 'includes/header.php';
                             }
                             ?>
                             <span class="badge <?php echo $status_class; ?>"><?php echo ucfirst($car['status']); ?></span>
+                        </td>
+                        <td>
+                            <?php if ($car['active_rental_id']): ?>
+                            <a href="rental_view.php?id=<?php echo $car['active_rental_id']; ?>" class="text-decoration-none">
+                                <strong><?php echo $car['active_customer']; ?></strong><br>
+                                <small class="text-muted">Until <?php echo formatDate($car['active_end_date']); ?></small>
+                            </a>
+                            <?php else: ?>
+                            <span class="text-muted">-</span>
+                            <?php endif; ?>
                         </td>
                         <?php if (isAdmin()): ?>
                         <td><?php echo $car['company_name'] ?? $car['full_name']; ?></td>
