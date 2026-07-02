@@ -18,20 +18,12 @@ if (isset($_GET['delete'])) {
 
 // Get cars
 if (isAdmin()) {
-    $cars = $conn->query("SELECT c.*, u.company_name, u.full_name,
-                                 r.id AS active_rental_id, r.end_date AS active_end_date, cu.full_name AS active_customer
+    $cars = $conn->query("SELECT c.*, u.company_name, u.full_name
                           FROM cars c 
                           JOIN users u ON c.user_id = u.id 
-                          LEFT JOIN rentals r ON r.car_id = c.id AND r.status = 'active'
-                          LEFT JOIN customers cu ON r.customer_id = cu.id
                           ORDER BY c.created_at DESC");
 } else {
-    $cars = $conn->query("SELECT c.*, r.id AS active_rental_id, r.end_date AS active_end_date, cu.full_name AS active_customer
-                          FROM cars c
-                          LEFT JOIN rentals r ON r.car_id = c.id AND r.status = 'active'
-                          LEFT JOIN customers cu ON r.customer_id = cu.id
-                          WHERE c.user_id = $user_id
-                          ORDER BY c.created_at DESC");
+    $cars = $conn->query("SELECT * FROM cars WHERE user_id = $user_id ORDER BY created_at DESC");
 }
 
 include 'includes/header.php';
@@ -63,7 +55,6 @@ include 'includes/header.php';
                         <th>Color</th>
                         <th>Rates</th>
                         <th>Status</th>
-                        <th>Current Renter</th>
                         <?php if (isAdmin()): ?>
                         <th>Owner</th>
                         <?php endif; ?>
@@ -95,16 +86,6 @@ include 'includes/header.php';
                             }
                             ?>
                             <span class="badge <?php echo $status_class; ?>"><?php echo ucfirst($car['status']); ?></span>
-                        </td>
-                        <td>
-                            <?php if ($car['active_rental_id']): ?>
-                            <a href="rentals.php?view=<?php echo $car['active_rental_id']; ?>" class="text-decoration-none">
-                                <strong><?php echo $car['active_customer']; ?></strong><br>
-                                <small class="text-muted">Until <?php echo formatDate($car['active_end_date']); ?></small>
-                            </a>
-                            <?php else: ?>
-                            <span class="text-muted">-</span>
-                            <?php endif; ?>
                         </td>
                         <?php if (isAdmin()): ?>
                         <td><?php echo $car['company_name'] ?? $car['full_name']; ?></td>

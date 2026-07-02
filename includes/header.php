@@ -15,7 +15,6 @@
         'dashboard' => ['dashboard.php'],
         'cars' => ['cars.php', 'car_add.php', 'car_edit.php'],
         'customers' => ['customers.php', 'customer_add.php', 'customer_edit.php'],
-        'rentals' => ['rentals.php', 'payment_add.php', 'payment_delete.php'],
         'admin' => ['admin.php'],
     ];
 
@@ -60,9 +59,6 @@
             <a class="sidebar-link <?php echo $is_active_section('customers'); ?>" href="customers.php">
                 <i class="bi bi-people"></i><span>Customers</span>
             </a>
-            <a class="sidebar-link <?php echo $is_active_section('rentals'); ?>" href="rentals.php">
-                <i class="bi bi-clipboard-check"></i><span>Rentals</span>
-            </a>
             <?php if (isAdmin()): ?>
             <a class="sidebar-link <?php echo $is_active_section('admin'); ?>" href="admin.php">
                 <i class="bi bi-shield-lock"></i><span>Admin Panel</span>
@@ -88,9 +84,6 @@
                 </a>
                 <a class="sidebar-link <?php echo $is_active_section('customers'); ?>" href="customers.php">
                     <i class="bi bi-people"></i><span>Customers</span>
-                </a>
-                <a class="sidebar-link <?php echo $is_active_section('rentals'); ?>" href="rentals.php">
-                    <i class="bi bi-clipboard-check"></i><span>Rentals</span>
                 </a>
                 <?php if (isAdmin()): ?>
                 <a class="sidebar-link <?php echo $is_active_section('admin'); ?>" href="admin.php">

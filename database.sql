@@ -62,47 +62,6 @@ CREATE TABLE IF NOT EXISTS customers (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- Rentals table
-CREATE TABLE IF NOT EXISTS rentals (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    user_id INT NOT NULL,
-    car_id INT NOT NULL,
-    customer_id INT NOT NULL,
-    start_date DATE NOT NULL,
-    end_date DATE NOT NULL,
-    actual_return_date DATE,
-    total_days INT NOT NULL,
-    billing_plan ENUM('daily', 'weekly', 'monthly') DEFAULT 'daily',
-    daily_rate DECIMAL(10,2) NOT NULL,
-    rate_amount DECIMAL(10,2),
-    billing_units INT NOT NULL DEFAULT 1,
-    total_amount DECIMAL(10,2) NOT NULL,
-    payment_status ENUM('pending', 'partial', 'paid') DEFAULT 'pending',
-    amount_paid DECIMAL(10,2) DEFAULT 0,
-    status ENUM('active', 'completed', 'cancelled') DEFAULT 'active',
-    notes TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (car_id) REFERENCES cars(id) ON DELETE CASCADE,
-    FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
-);
-
--- Payments table for tracking payment history
-CREATE TABLE IF NOT EXISTS payments (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    rental_id INT NOT NULL,
-    user_id INT NOT NULL,
-    amount DECIMAL(10,2) NOT NULL,
-    payment_date DATE NOT NULL,
-    payment_method VARCHAR(50),
-    receipt_photo VARCHAR(255),
-    notes TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (rental_id) REFERENCES rentals(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
 -- Insert default admin account
 -- Password: admin123 (hashed)
 INSERT INTO users (username, email, password, full_name, role) VALUES
