@@ -13,8 +13,8 @@
     $current_page = basename($_SERVER['PHP_SELF']);
     $section_pages = [
         'dashboard' => ['dashboard.php'],
-        'cars' => ['cars.php', 'car_add.php', 'car_edit.php'],
-        'customers' => ['customers.php', 'customer_add.php', 'customer_edit.php'],
+        'cars' => ['cars.php'],
+        'customers' => ['customers.php'],
         'admin' => ['admin.php'],
     ];
 

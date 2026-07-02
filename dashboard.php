@@ -105,7 +105,7 @@ include 'includes/header.php';
         <div class="card border-0 shadow-sm">
             <div class="card-header bg-white d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Recent Cars</h5>
-                <a href="car_add.php" class="btn btn-sm btn-dark">
+                <a href="cars.php?add=1" class="btn btn-sm btn-dark">
                     <i class="bi bi-plus-circle me-1"></i>Add Car
                 </a>
             </div>
