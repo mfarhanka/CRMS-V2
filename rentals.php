@@ -30,7 +30,7 @@ function rentalIntervalSpec($frequency) {
     return ['+1 day', ''];
 }
 
-function generatePaymentRecords($conn, $rental_id, $start_date, $end_date, $frequency, $amount_due) {
+function generatePaymentRecords($conn, $rental_id, $start_date, $end_date, $frequency, $amount_due, $skip_periods = []) {
     $start = new DateTime($start_date);
     $end = new DateTime($end_date);
     [$advance, $back] = rentalIntervalSpec($frequency);
@@ -50,18 +50,58 @@ function generatePaymentRecords($conn, $rental_id, $start_date, $end_date, $freq
         $period_start_sql = $period_start->format('Y-m-d');
         $period_end_sql = $period_end->format('Y-m-d');
         $due_date = $period_start_sql;
+        $period_key = $period_start_sql . '|' . $period_end_sql;
 
-        $stmt = $conn->prepare("INSERT INTO rental_payment_records (rental_id, period_start, period_end, due_date, amount_due) VALUES (?, ?, ?, ?, ?)");
-        $stmt->bind_param("isssd", $rental_id, $period_start_sql, $period_end_sql, $due_date, $amount_due);
-        $stmt->execute();
-        $stmt->close();
+        if (!isset($skip_periods[$period_key])) {
+            $stmt = $conn->prepare("INSERT INTO rental_payment_records (rental_id, period_start, period_end, due_date, amount_due) VALUES (?, ?, ?, ?, ?)");
+            $stmt->bind_param("isssd", $rental_id, $period_start_sql, $period_end_sql, $due_date, $amount_due);
+            $stmt->execute();
+            $stmt->close();
 
-        $total_amount += $amount_due;
+            $total_amount += $amount_due;
+        }
         $start = clone $period_end;
         $start->modify('+1 day');
     }
 
     return $total_amount;
+}
+
+function agreementEndAndLabel($start_date, $duration, $custom_end_date) {
+    $start = new DateTime($start_date);
+    $end = clone $start;
+    $duration_label = '3 Months';
+
+    if ($duration == '1_year') {
+        $end->modify('+1 year -1 day');
+        $duration_label = '1 Year';
+    } elseif ($duration == '6_months') {
+        $end->modify('+6 months -1 day');
+        $duration_label = '6 Months';
+    } elseif ($duration == 'custom') {
+        if (!$custom_end_date || strtotime($custom_end_date) < strtotime($start_date)) {
+            return [null, null, 'Custom end date must be after start date'];
+        }
+        $end = new DateTime($custom_end_date);
+        $duration_label = 'Custom';
+    } else {
+        $end->modify('+3 months -1 day');
+    }
+
+    return [$end, $duration_label, ''];
+}
+
+function durationValueFromLabel($label) {
+    if ($label == '1 Year') {
+        return '1_year';
+    }
+    if ($label == '6 Months') {
+        return '6_months';
+    }
+    if ($label == 'Custom') {
+        return 'custom';
+    }
+    return '3_months';
 }
 
 function refreshRentalPaymentStatus($conn, $rental_id) {
@@ -101,25 +141,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $form_error = 'Please fill in all required fields';
             $open_modal = 'addRentalModal';
         } else {
-            $start = new DateTime($start_date);
-            $end = clone $start;
-            $duration_label = '3 Months';
-            if ($duration == '1_year') {
-                $end->modify('+1 year -1 day');
-                $duration_label = '1 Year';
-            } elseif ($duration == '6_months') {
-                $end->modify('+6 months -1 day');
-                $duration_label = '6 Months';
-            } elseif ($duration == 'custom') {
-                if (!$custom_end_date || strtotime($custom_end_date) < strtotime($start_date)) {
-                    $form_error = 'Custom end date must be after start date';
-                    $open_modal = 'addRentalModal';
-                } else {
-                    $end = new DateTime($custom_end_date);
-                    $duration_label = 'Custom';
-                }
-            } else {
-                $end->modify('+3 months -1 day');
+            [$end, $duration_label, $date_error] = agreementEndAndLabel($start_date, $duration, $custom_end_date);
+            if ($date_error) {
+                $form_error = $date_error;
+                $open_modal = 'addRentalModal';
             }
 
             if (!$form_error) {
@@ -178,23 +203,121 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
     } elseif ($rental_action == 'update') {
         $rental_id = intval($_POST['rental_id'] ?? 0);
+        $car_id = intval($_POST['car_id'] ?? 0);
+        $customer_id = intval($_POST['customer_id'] ?? 0);
+        $start_date = sanitize($_POST['start_date'] ?? '');
+        $duration = sanitize($_POST['agreement_duration'] ?? '3_months');
+        $custom_end_date = sanitize($_POST['custom_end_date'] ?? '');
+        $payment_frequency = sanitize($_POST['payment_frequency'] ?? 'monthly');
         $status = sanitize($_POST['status'] ?? 'active');
         $notes = sanitize($_POST['notes'] ?? '');
 
-        $stmt = $conn->prepare("UPDATE rentals SET status = ?, notes = ? WHERE id = ?");
-        $stmt->bind_param("ssi", $status, $notes, $rental_id);
-        if ($stmt->execute()) {
-            $car = $conn->query("SELECT car_id FROM rentals WHERE id = " . intval($rental_id))->fetch_assoc();
-            if ($car) {
-                $car_status = $status == 'active' ? 'rented' : 'available';
-                $conn->query("UPDATE cars SET status = '$car_status' WHERE id = " . intval($car['car_id']));
+        $valid_frequencies = ['daily', 'weekly', 'monthly'];
+        if (!$rental_id || !$car_id || !$customer_id || !$start_date || !in_array($payment_frequency, $valid_frequencies)) {
+            $form_error = 'Please fill in all required fields';
+            $open_modal = 'editRentalModal' . $rental_id;
+        } else {
+            [$end, $duration_label, $date_error] = agreementEndAndLabel($start_date, $duration, $custom_end_date);
+            if ($date_error) {
+                $form_error = $date_error;
+                $open_modal = 'editRentalModal' . $rental_id;
             }
-            header('Location: rentals.php?view=' . $rental_id);
-            exit();
         }
-        $form_error = 'Something went wrong. Please try again.';
-        $open_modal = 'editRentalModal' . $rental_id;
-        $stmt->close();
+
+        if (!$form_error) {
+            $rental_stmt = $conn->prepare("SELECT * FROM rentals WHERE id = ?");
+            $rental_stmt->bind_param("i", $rental_id);
+            $rental_stmt->execute();
+            $rental_result = $rental_stmt->get_result();
+            $rental_stmt->close();
+
+            if ($rental_result->num_rows == 0) {
+                $form_error = 'Selected rental not found';
+                $open_modal = 'editRentalModal' . $rental_id;
+            } else {
+                $current_rental = $rental_result->fetch_assoc();
+
+                $car_stmt = $conn->prepare("SELECT * FROM cars WHERE id = ? AND (status = 'available' OR id = ?)");
+                $current_car_id = intval($current_rental['car_id']);
+                $car_stmt->bind_param("ii", $car_id, $current_car_id);
+                $car_stmt->execute();
+                $car_result = $car_stmt->get_result();
+                $customer_stmt = $conn->prepare("SELECT * FROM customers WHERE id = ?");
+                $customer_stmt->bind_param("i", $customer_id);
+                $customer_stmt->execute();
+                $customer_result = $customer_stmt->get_result();
+
+                if ($car_result->num_rows == 0) {
+                    $form_error = 'Selected car is not available';
+                    $open_modal = 'editRentalModal' . $rental_id;
+                } elseif ($customer_result->num_rows == 0) {
+                    $form_error = 'Selected customer not found';
+                    $open_modal = 'editRentalModal' . $rental_id;
+                } else {
+                    $car = $car_result->fetch_assoc();
+                    $customer = $customer_result->fetch_assoc();
+                    $rental_user_id = intval($car['user_id']);
+
+                    if ($rental_user_id !== intval($customer['user_id'])) {
+                        $form_error = 'Selected car and customer must belong to the same account';
+                        $open_modal = 'editRentalModal' . $rental_id;
+                    } else {
+                        $end_date = $end->format('Y-m-d');
+                        $total_days = $end->diff(new DateTime($start_date))->days + 1;
+                        $daily_rate = floatval($car['daily_rate']);
+                        $rate_amount = rentalRateForFrequency($car, $payment_frequency);
+
+                        $schedule_changed = (
+                            intval($current_rental['car_id']) !== $car_id
+                            || intval($current_rental['customer_id']) !== $customer_id
+                            || $current_rental['start_date'] !== $start_date
+                            || $current_rental['end_date'] !== $end_date
+                            || $current_rental['payment_frequency'] !== $payment_frequency
+                            || floatval($current_rental['rate_amount']) != $rate_amount
+                        );
+
+                        $stmt = $conn->prepare("UPDATE rentals SET user_id = ?, car_id = ?, customer_id = ?, start_date = ?, end_date = ?, total_days = ?, agreement_duration = ?, payment_frequency = ?, daily_rate = ?, rate_amount = ?, status = ?, notes = ? WHERE id = ?");
+                        $stmt->bind_param("iiississddssi", $rental_user_id, $car_id, $customer_id, $start_date, $end_date, $total_days, $duration_label, $payment_frequency, $daily_rate, $rate_amount, $status, $notes, $rental_id);
+
+                        if ($stmt->execute()) {
+                            if ($schedule_changed) {
+                                $paid_periods = [];
+                                $paid_result = $conn->query("SELECT period_start, period_end FROM rental_payment_records WHERE rental_id = " . intval($rental_id) . " AND status = 'paid'");
+                                while ($paid_record = $paid_result->fetch_assoc()) {
+                                    $paid_periods[$paid_record['period_start'] . '|' . $paid_record['period_end']] = true;
+                                }
+
+                                $conn->query("DELETE FROM rental_payment_records WHERE rental_id = " . intval($rental_id) . " AND status = 'pending'");
+                                generatePaymentRecords($conn, $rental_id, $start_date, $end_date, $payment_frequency, $rate_amount, $paid_periods);
+                                refreshRentalPaymentStatus($conn, $rental_id);
+                            } else {
+                                refreshRentalPaymentStatus($conn, $rental_id);
+                            }
+
+                            if ($current_car_id !== $car_id) {
+                                $conn->query("UPDATE cars SET status = 'available' WHERE id = " . $current_car_id);
+                            }
+
+                            if ($status == 'active') {
+                                $conn->query("UPDATE cars SET status = 'rented' WHERE id = " . intval($car_id));
+                            } else {
+                                $conn->query("UPDATE cars SET status = 'available' WHERE id = " . intval($car_id));
+                            }
+
+                            header('Location: rentals.php?view=' . $rental_id);
+                            exit();
+                        }
+
+                        $form_error = 'Something went wrong. Please try again.';
+                        $open_modal = 'editRentalModal' . $rental_id;
+                        $stmt->close();
+                    }
+                }
+
+                $car_stmt->close();
+                $customer_stmt->close();
+            }
+        }
     } elseif ($rental_action == 'delete') {
         $rental_id = intval($_POST['rental_id'] ?? 0);
         $car = $conn->query("SELECT car_id FROM rentals WHERE id = " . intval($rental_id))->fetch_assoc();
@@ -232,15 +355,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 }
 
-$available_cars = $conn->query("SELECT c.*, u.company_name, u.full_name
-                                FROM cars c
-                                JOIN users u ON c.user_id = u.id
-                                WHERE c.status = 'available'
-                                ORDER BY c.brand, c.model");
-$customers = $conn->query("SELECT c.*, u.company_name, u.full_name AS agent_name
-                           FROM customers c
-                           JOIN users u ON c.user_id = u.id
-                           ORDER BY c.full_name");
+$cars_for_select_result = $conn->query("SELECT c.*, u.company_name, u.full_name
+                                        FROM cars c
+                                        JOIN users u ON c.user_id = u.id
+                                        ORDER BY c.brand, c.model");
+$customers_for_select_result = $conn->query("SELECT c.*, u.company_name, u.full_name AS agent_name
+                                             FROM customers c
+                                             JOIN users u ON c.user_id = u.id
+                                             ORDER BY c.full_name");
 $rentals = $conn->query("SELECT r.*, c.brand, c.model, c.plate_number, cu.full_name AS customer_name, cu.phone AS customer_phone, u.company_name, u.full_name AS agent_name
                          FROM rentals r
                          JOIN cars c ON r.car_id = c.id
@@ -251,6 +373,16 @@ $rentals = $conn->query("SELECT r.*, c.brand, c.model, c.plate_number, cu.full_n
 $rental_rows = [];
 while ($rental = $rentals->fetch_assoc()) {
     $rental_rows[] = $rental;
+}
+
+$cars_for_select = [];
+while ($car = $cars_for_select_result->fetch_assoc()) {
+    $cars_for_select[] = $car;
+}
+
+$customers_for_select = [];
+while ($customer = $customers_for_select_result->fetch_assoc()) {
+    $customers_for_select[] = $customer;
 }
 
 $payment_records = [];
@@ -346,23 +478,24 @@ include 'includes/header.php';
                         <label class="form-label">Car <span class="text-danger">*</span></label>
                         <select class="form-select rental-car-select" name="car_id" required>
                             <option value="">Choose a car...</option>
-                            <?php while ($car = $available_cars->fetch_assoc()): ?>
+                            <?php foreach ($cars_for_select as $car): ?>
+                            <?php if ($car['status'] != 'available') continue; ?>
                             <option value="<?php echo $car['id']; ?>"
                                     data-daily-rate="<?php echo $car['daily_rate']; ?>"
                                     data-weekly-rate="<?php echo $car['weekly_rate']; ?>"
                                     data-monthly-rate="<?php echo $car['monthly_rate']; ?>">
                                 <?php echo $car['brand'] . ' ' . $car['model'] . ' - ' . $car['plate_number']; ?> (<?php echo $car['company_name'] ?? $car['full_name']; ?>)
                             </option>
-                            <?php endwhile; ?>
+                            <?php endforeach; ?>
                         </select>
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Customer <span class="text-danger">*</span></label>
                         <select class="form-select" name="customer_id" required>
                             <option value="">Choose a customer...</option>
-                            <?php while ($customer = $customers->fetch_assoc()): ?>
+                            <?php foreach ($customers_for_select as $customer): ?>
                             <option value="<?php echo $customer['id']; ?>"><?php echo $customer['full_name'] . ' - ' . $customer['phone']; ?> (<?php echo $customer['company_name'] ?? $customer['agent_name']; ?>)</option>
-                            <?php endwhile; ?>
+                            <?php endforeach; ?>
                         </select>
                     </div>
                 </div>
@@ -497,8 +630,8 @@ include 'includes/header.php';
 </div>
 
 <div class="modal fade" id="editRentalModal<?php echo $rental['id']; ?>" tabindex="-1" aria-labelledby="editRentalModalLabel<?php echo $rental['id']; ?>" aria-hidden="true">
-    <div class="modal-dialog">
-        <form method="POST" action="rentals.php" class="modal-content">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <form method="POST" action="rentals.php" class="modal-content rental-form">
             <input type="hidden" name="rental_action" value="update">
             <input type="hidden" name="rental_id" value="<?php echo $rental['id']; ?>">
             <div class="modal-header">
@@ -506,6 +639,96 @@ include 'includes/header.php';
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    Changing the car, customer, dates, duration, or payment schedule will rebuild the pending payment records for this agreement.
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Car <span class="text-danger">*</span></label>
+                        <select class="form-select rental-car-select" name="car_id" required>
+                            <?php foreach ($cars_for_select as $car): ?>
+                            <?php
+                            $is_current_car = intval($car['id']) === intval($rental['car_id']);
+                            $is_unavailable = $car['status'] != 'available' && !$is_current_car;
+                            ?>
+                            <option value="<?php echo $car['id']; ?>"
+                                    data-daily-rate="<?php echo $car['daily_rate']; ?>"
+                                    data-weekly-rate="<?php echo $car['weekly_rate']; ?>"
+                                    data-monthly-rate="<?php echo $car['monthly_rate']; ?>"
+                                    <?php echo $is_current_car ? 'selected' : ''; ?>
+                                    <?php echo $is_unavailable ? 'disabled' : ''; ?>>
+                                <?php echo $car['brand'] . ' ' . $car['model'] . ' - ' . $car['plate_number']; ?>
+                                (<?php echo $car['company_name'] ?? $car['full_name']; ?>)
+                                <?php echo $is_unavailable ? ' - Not available' : ''; ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Customer <span class="text-danger">*</span></label>
+                        <select class="form-select" name="customer_id" required>
+                            <?php foreach ($customers_for_select as $customer): ?>
+                            <option value="<?php echo $customer['id']; ?>" <?php echo intval($customer['id']) === intval($rental['customer_id']) ? 'selected' : ''; ?>>
+                                <?php echo $customer['full_name'] . ' - ' . $customer['phone']; ?> (<?php echo $customer['company_name'] ?? $customer['agent_name']; ?>)
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+
+                <?php
+                $duration_value = durationValueFromLabel($rental['agreement_duration']);
+                $custom_end_value = $duration_value == 'custom' ? $rental['end_date'] : '';
+                ?>
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Start Date <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control rental-start-date" name="start_date" value="<?php echo $rental['start_date']; ?>" required>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Agreement Duration</label>
+                        <select class="form-select rental-duration" name="agreement_duration">
+                            <option value="3_months" <?php echo $duration_value == '3_months' ? 'selected' : ''; ?>>3 Months</option>
+                            <option value="6_months" <?php echo $duration_value == '6_months' ? 'selected' : ''; ?>>6 Months</option>
+                            <option value="1_year" <?php echo $duration_value == '1_year' ? 'selected' : ''; ?>>1 Year</option>
+                            <option value="custom" <?php echo $duration_value == 'custom' ? 'selected' : ''; ?>>Custom</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Custom End Date</label>
+                        <input type="date" class="form-control rental-custom-end-date" name="custom_end_date" value="<?php echo $custom_end_value; ?>">
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Payment Schedule</label>
+                        <select class="form-select rental-frequency" name="payment_frequency">
+                            <option value="monthly" <?php echo $rental['payment_frequency'] == 'monthly' ? 'selected' : ''; ?>>Monthly</option>
+                            <option value="weekly" <?php echo $rental['payment_frequency'] == 'weekly' ? 'selected' : ''; ?>>Weekly</option>
+                            <option value="daily" <?php echo $rental['payment_frequency'] == 'daily' ? 'selected' : ''; ?>>Daily</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="card bg-light mb-3">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <p class="mb-1 text-muted">Agreement End</p>
+                                <h6 class="rental-end-display"><?php echo $rental['end_date']; ?></h6>
+                            </div>
+                            <div class="col-md-4">
+                                <p class="mb-1 text-muted">Payment Amount</p>
+                                <h6 class="rental-rate-display"><?php echo formatCurrency($rental['rate_amount']); ?></h6>
+                            </div>
+                            <div class="col-md-4">
+                                <p class="mb-1 text-muted">Estimated Records</p>
+                                <h6 class="rental-records-display"><?php echo count($records); ?></h6>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="mb-3">
                     <label class="form-label">Status</label>
                     <select class="form-select" name="status">
@@ -556,7 +779,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function formatDate(date) {
-        return date.toISOString().slice(0, 10);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
     }
 
     function formatCurrency(amount) {
@@ -567,6 +793,12 @@ document.addEventListener('DOMContentLoaded', function() {
         if (frequency === 'weekly') return 7;
         if (frequency === 'monthly') return 30;
         return 1;
+    }
+
+    function getFrequencyUnit(frequency) {
+        if (frequency === 'weekly') return 'week';
+        if (frequency === 'monthly') return 'month';
+        return 'day';
     }
 
     function updateRentalPreview(form) {
@@ -606,7 +838,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const records = Math.max(1, Math.ceil(diffDays / getPlanDays(frequency)));
 
         form.querySelector('.rental-end-display').textContent = formatDate(end);
-        form.querySelector('.rental-rate-display').textContent = formatCurrency(rate) + ' / ' + frequency.replace('ly', '');
+        form.querySelector('.rental-rate-display').textContent = formatCurrency(rate) + ' / ' + getFrequencyUnit(frequency);
         form.querySelector('.rental-records-display').textContent = records;
     }
 
@@ -616,6 +848,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 updateRentalPreview(form);
             });
         });
+        updateRentalPreview(form);
     });
 
     const viewRentalId = new URLSearchParams(window.location.search).get('view');
