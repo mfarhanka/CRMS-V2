@@ -8,17 +8,29 @@
     --medium-gray: #e9ecef;
     --dark-gray: #6c757d;
     --text-color: #212529;
+    --topbar-height: 57px;
+    --sidebar-width: 260px;
 }
 
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background-color: var(--light-gray);
     color: var(--text-color);
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
 }
 
 /* Navbar customization */
 .navbar-dark {
     background-color: var(--primary-color) !important;
+}
+
+.app-topbar {
+    min-height: var(--topbar-height);
+    position: sticky;
+    top: 0;
+    z-index: 1030;
 }
 
 .navbar-brand {
@@ -34,6 +46,86 @@ body {
 .navbar-nav .nav-link.active {
     background-color: rgba(255, 255, 255, 0.1);
     border-radius: 4px;
+}
+
+/* App shell */
+.app-sidebar {
+    position: fixed;
+    top: var(--topbar-height);
+    bottom: 0;
+    left: 0;
+    z-index: 1020;
+    width: var(--sidebar-width);
+    padding: 1rem;
+    background: var(--secondary-color);
+    border-right: 1px solid var(--medium-gray);
+    overflow-y: auto;
+}
+
+.sidebar-heading {
+    margin: 0.25rem 0 1rem;
+    padding: 0 0.75rem;
+    color: var(--dark-gray);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.sidebar-nav {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.sidebar-link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 44px;
+    padding: 0.7rem 0.85rem;
+    color: var(--text-color);
+    text-decoration: none;
+    border-radius: 6px;
+    font-weight: 500;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.sidebar-link i {
+    width: 1.25rem;
+    color: var(--dark-gray);
+    font-size: 1.1rem;
+    text-align: center;
+}
+
+.sidebar-link:hover {
+    color: var(--primary-color);
+    background-color: var(--light-gray);
+}
+
+.sidebar-link.active {
+    color: var(--secondary-color);
+    background-color: var(--primary-color);
+}
+
+.sidebar-link.active i {
+    color: var(--secondary-color);
+}
+
+.app-main,
+.app-footer {
+    margin-left: var(--sidebar-width);
+}
+
+.app-main {
+    flex: 1 0 auto;
+}
+
+.app-mobile-sidebar {
+    width: min(86vw, var(--sidebar-width));
+}
+
+.app-mobile-sidebar .offcanvas-body {
+    padding-top: 0;
 }
 
 /* Cards */
@@ -136,6 +228,11 @@ footer {
     margin-top: auto;
 }
 
+.app-footer {
+    flex-shrink: 0;
+    margin-top: auto !important;
+}
+
 /* Alerts */
 .alert {
     border-radius: 8px;
@@ -179,6 +276,13 @@ footer {
     
     .table {
         font-size: 0.875rem;
+    }
+}
+
+@media (max-width: 991.98px) {
+    .app-main,
+    .app-footer {
+        margin-left: 0;
     }
 }
 

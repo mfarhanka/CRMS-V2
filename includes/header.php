@@ -9,45 +9,30 @@
     <link rel="stylesheet" href="<?php echo SITE_URL; ?>assets/css/style.css">
 </head>
 <body class="bg-light">
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
+    <?php
+    $current_page = basename($_SERVER['PHP_SELF']);
+    $section_pages = [
+        'dashboard' => ['dashboard.php'],
+        'cars' => ['cars.php', 'car_add.php', 'car_edit.php'],
+        'customers' => ['customers.php', 'customer_add.php', 'customer_edit.php'],
+        'rentals' => ['rentals.php', 'rental_add.php', 'rental_edit.php', 'rental_view.php', 'payment_add.php', 'payment_delete.php'],
+        'admin' => ['admin.php'],
+    ];
+
+    $is_active_section = function($section) use ($current_page, $section_pages) {
+        return in_array($current_page, $section_pages[$section] ?? []) ? 'active' : '';
+    };
+    ?>
+    <nav class="navbar navbar-dark bg-dark shadow-sm app-topbar">
         <div class="container-fluid">
+            <button class="btn btn-outline-light d-lg-none me-2" type="button" data-bs-toggle="offcanvas" data-bs-target="#mobileSidebar" aria-controls="mobileSidebar" aria-label="Open menu">
+                <i class="bi bi-list"></i>
+            </button>
             <a class="navbar-brand" href="dashboard.php">
                 <i class="bi bi-car-front-fill me-2"></i>Car Rental System
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
-                    <li class="nav-item">
-                        <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'dashboard.php' ? 'active' : ''; ?>" href="dashboard.php">
-                            <i class="bi bi-speedometer2 me-1"></i>Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'cars.php' ? 'active' : ''; ?>" href="cars.php">
-                            <i class="bi bi-car-front me-1"></i>Cars
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'customers.php' ? 'active' : ''; ?>" href="customers.php">
-                            <i class="bi bi-people me-1"></i>Customers
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'rentals.php' ? 'active' : ''; ?>" href="rentals.php">
-                            <i class="bi bi-clipboard-check me-1"></i>Rentals
-                        </a>
-                    </li>
-                    <?php if (isAdmin()): ?>
-                    <li class="nav-item">
-                        <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'admin.php' ? 'active' : ''; ?>" href="admin.php">
-                            <i class="bi bi-shield-lock me-1"></i>Admin Panel
-                        </a>
-                    </li>
-                    <?php endif; ?>
-                </ul>
-                <ul class="navbar-nav">
+            <div class="ms-auto">
+                <ul class="navbar-nav flex-row">
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
                             <i class="bi bi-person-circle me-1"></i><?php echo $_SESSION['full_name']; ?>
@@ -62,5 +47,59 @@
             </div>
         </div>
     </nav>
+
+    <aside class="app-sidebar d-none d-lg-flex flex-column">
+        <div class="sidebar-heading">Main Menu</div>
+        <nav class="sidebar-nav">
+            <a class="sidebar-link <?php echo $is_active_section('dashboard'); ?>" href="dashboard.php">
+                <i class="bi bi-speedometer2"></i><span>Dashboard</span>
+            </a>
+            <a class="sidebar-link <?php echo $is_active_section('cars'); ?>" href="cars.php">
+                <i class="bi bi-car-front"></i><span>Cars</span>
+            </a>
+            <a class="sidebar-link <?php echo $is_active_section('customers'); ?>" href="customers.php">
+                <i class="bi bi-people"></i><span>Customers</span>
+            </a>
+            <a class="sidebar-link <?php echo $is_active_section('rentals'); ?>" href="rentals.php">
+                <i class="bi bi-clipboard-check"></i><span>Rentals</span>
+            </a>
+            <?php if (isAdmin()): ?>
+            <a class="sidebar-link <?php echo $is_active_section('admin'); ?>" href="admin.php">
+                <i class="bi bi-shield-lock"></i><span>Admin Panel</span>
+            </a>
+            <?php endif; ?>
+        </nav>
+    </aside>
+
+    <div class="offcanvas offcanvas-start app-mobile-sidebar" tabindex="-1" id="mobileSidebar" aria-labelledby="mobileSidebarLabel">
+        <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="mobileSidebarLabel">
+                <i class="bi bi-car-front-fill me-2"></i>Menu
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body">
+            <nav class="sidebar-nav">
+                <a class="sidebar-link <?php echo $is_active_section('dashboard'); ?>" href="dashboard.php">
+                    <i class="bi bi-speedometer2"></i><span>Dashboard</span>
+                </a>
+                <a class="sidebar-link <?php echo $is_active_section('cars'); ?>" href="cars.php">
+                    <i class="bi bi-car-front"></i><span>Cars</span>
+                </a>
+                <a class="sidebar-link <?php echo $is_active_section('customers'); ?>" href="customers.php">
+                    <i class="bi bi-people"></i><span>Customers</span>
+                </a>
+                <a class="sidebar-link <?php echo $is_active_section('rentals'); ?>" href="rentals.php">
+                    <i class="bi bi-clipboard-check"></i><span>Rentals</span>
+                </a>
+                <?php if (isAdmin()): ?>
+                <a class="sidebar-link <?php echo $is_active_section('admin'); ?>" href="admin.php">
+                    <i class="bi bi-shield-lock"></i><span>Admin Panel</span>
+                </a>
+                <?php endif; ?>
+            </nav>
+        </div>
+    </div>
     
-    <div class="container-fluid py-4">
+    <main class="app-main">
+        <div class="container-fluid py-4">

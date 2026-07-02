@@ -1,6 +1,7 @@
-    </div>
+        </div>
+    </main>
     
-    <footer class="bg-white border-top py-3 mt-5">
+    <footer class="bg-white border-top py-3 mt-5 app-footer">
         <div class="container-fluid">
             <div class="row">
                 <div class="col-md-6">

@@ -37,6 +37,7 @@ if ($result->num_rows == 0) {
 
 $rental = $result->fetch_assoc();
 $balance = $rental['total_amount'] - $rental['amount_paid'];
+$default_amount = number_format($balance, 2, '.', '');
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $amount = floatval($_POST['amount']);
@@ -44,6 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $payment_method = sanitize($_POST['payment_method']);
     $notes = sanitize($_POST['notes']);
     $user_id = intval($rental['user_id']);
+    $default_amount = htmlspecialchars($_POST['amount'] ?? $default_amount);
     
     if (empty($amount) || empty($payment_date)) {
         $error = 'Please fill in all required fields';
@@ -160,7 +162,7 @@ include 'includes/header.php';
                         <div class="col-md-6 mb-3">
                             <label for="amount" class="form-label">Payment Amount (RM) <span class="text-danger">*</span></label>
                             <input type="number" class="form-control" id="amount" name="amount" 
-                                   step="0.01" min="0.01" max="<?php echo $balance; ?>" required>
+                                   step="0.01" min="0.01" max="<?php echo $balance; ?>" value="<?php echo $default_amount; ?>" required>
                             <small class="text-muted">Maximum: <?php echo formatCurrency($balance); ?></small>
                         </div>
                         
