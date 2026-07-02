@@ -15,7 +15,7 @@
         'dashboard' => ['dashboard.php'],
         'cars' => ['cars.php', 'car_add.php', 'car_edit.php'],
         'customers' => ['customers.php', 'customer_add.php', 'customer_edit.php'],
-        'rentals' => ['rentals.php', 'rental_add.php', 'rental_edit.php', 'rental_view.php', 'payment_add.php', 'payment_delete.php'],
+        'rentals' => ['rentals.php', 'rental_view.php', 'payment_add.php', 'payment_delete.php'],
         'admin' => ['admin.php'],
     ];
 

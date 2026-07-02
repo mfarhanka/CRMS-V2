@@ -111,9 +111,7 @@ crms-v2/
 ├── login.php                  # Login page
 ├── logout.php                 # Logout handler
 ├── profile.php                # User profile
-├── rentals.php                # Rental listing
-├── rental_add.php             # Add new rental
-├── rental_edit.php            # Edit rental
+├── rentals.php                # Rental listing and add/edit modals
 ├── rental_view.php            # View rental details
 ├── signup.php                 # Registration page
 └── README.md                  # This file

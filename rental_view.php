@@ -48,7 +48,7 @@ include 'includes/header.php';
             <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Rental Details - #<?php echo str_pad($rental['id'], 6, '0', STR_PAD_LEFT); ?></h5>
                 <div>
-                    <a href="rental_edit.php?id=<?php echo $rental['id']; ?>" class="btn btn-sm btn-light">
+                    <a href="rentals.php?edit=<?php echo $rental['id']; ?>" class="btn btn-sm btn-light">
                         <i class="bi bi-pencil me-1"></i>Edit
                     </a>
                     <a href="rentals.php" class="btn btn-sm btn-outline-light">
