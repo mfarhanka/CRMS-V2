@@ -90,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $update_stmt->execute();
             $update_stmt->close();
             
-            header('Location: rental_view.php?id=' . $rental_id);
+            header('Location: rentals.php?view=' . $rental_id);
             exit();
         } else {
             $error = 'Something went wrong. Please try again.';
@@ -152,7 +152,7 @@ include 'includes/header.php';
                     <div class="alert alert-info">
                         <i class="bi bi-info-circle-fill me-2"></i>This rental has been fully paid.
                     </div>
-                    <a href="rental_view.php?id=<?php echo $rental_id; ?>" class="btn btn-outline-secondary">
+                    <a href="rentals.php?view=<?php echo $rental_id; ?>" class="btn btn-outline-secondary">
                         <i class="bi bi-arrow-left me-2"></i>Back to Rental
                     </a>
                 <?php else: ?>
@@ -203,7 +203,7 @@ include 'includes/header.php';
                         <button type="submit" class="btn btn-dark">
                             <i class="bi bi-check-circle me-2"></i>Record Payment
                         </button>
-                        <a href="rental_view.php?id=<?php echo $rental_id; ?>" class="btn btn-outline-secondary">Cancel</a>
+                        <a href="rentals.php?view=<?php echo $rental_id; ?>" class="btn btn-outline-secondary">Cancel</a>
                     </div>
                 </form>
                 

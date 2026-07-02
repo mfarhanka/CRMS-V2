@@ -226,19 +226,37 @@ $customers = isAdmin()
     : $conn->query("SELECT * FROM customers WHERE user_id = $user_id ORDER BY full_name");
 
 if (isAdmin()) {
-    $rentals = $conn->query("SELECT r.*, c.brand, c.model, c.plate_number, c.weekly_rate, c.monthly_rate, cu.full_name as customer_name, u.company_name, u.full_name as agent_name
+    $rentals = $conn->query("SELECT r.*, c.brand, c.model, c.plate_number, c.color, c.weekly_rate, c.monthly_rate,
+                                    cu.full_name as customer_name, cu.phone as customer_phone, cu.email as customer_email, cu.license_number,
+                                    u.company_name, u.full_name as agent_name
                              FROM rentals r
                              JOIN cars c ON r.car_id = c.id
                              JOIN customers cu ON r.customer_id = cu.id
                              JOIN users u ON r.user_id = u.id
                              ORDER BY r.start_date DESC");
 } else {
-    $rentals = $conn->query("SELECT r.*, c.brand, c.model, c.plate_number, c.weekly_rate, c.monthly_rate, cu.full_name as customer_name
+    $rentals = $conn->query("SELECT r.*, c.brand, c.model, c.plate_number, c.color, c.weekly_rate, c.monthly_rate,
+                                    cu.full_name as customer_name, cu.phone as customer_phone, cu.email as customer_email, cu.license_number
                              FROM rentals r
                              JOIN cars c ON r.car_id = c.id
                              JOIN customers cu ON r.customer_id = cu.id
                              WHERE r.user_id = $user_id
                              ORDER BY r.start_date DESC");
+}
+
+$rental_rows = [];
+while ($rental = $rentals->fetch_assoc()) {
+    $rental_rows[] = $rental;
+}
+
+$payments_by_rental = [];
+$rental_ids = array_map('intval', array_column($rental_rows, 'id'));
+if (!empty($rental_ids)) {
+    $payment_ids = implode(',', $rental_ids);
+    $payments = $conn->query("SELECT * FROM payments WHERE rental_id IN ($payment_ids) ORDER BY payment_date DESC, created_at DESC");
+    while ($payment = $payments->fetch_assoc()) {
+        $payments_by_rental[intval($payment['rental_id'])][] = $payment;
+    }
 }
 
 include 'includes/header.php';
@@ -264,7 +282,7 @@ include 'includes/header.php';
 
 <div class="card border-0 shadow-sm">
     <div class="card-body">
-        <?php if ($rentals->num_rows > 0): ?>
+        <?php if (count($rental_rows) > 0): ?>
         <div class="table-responsive">
             <table class="table table-hover">
                 <thead>
@@ -285,7 +303,7 @@ include 'includes/header.php';
                     </tr>
                 </thead>
                 <tbody>
-                    <?php while ($rental = $rentals->fetch_assoc()): ?>
+                    <?php foreach ($rental_rows as $rental): ?>
                     <tr>
                         <td>
                             <strong><?php echo $rental['brand'] . ' ' . $rental['model']; ?></strong><br>
@@ -316,9 +334,10 @@ include 'includes/header.php';
                             <span class="badge <?php echo $status_class; ?>"><?php echo ucfirst($rental['status']); ?></span>
                         </td>
                         <td>
-                            <a href="rental_view.php?id=<?php echo $rental['id']; ?>" class="btn btn-sm btn-outline-info" title="View">
+                            <button type="button" class="btn btn-sm btn-outline-info" title="View"
+                                    data-bs-toggle="modal" data-bs-target="#viewRentalModal<?php echo $rental['id']; ?>">
                                 <i class="bi bi-eye"></i>
-                            </a>
+                            </button>
                             <button type="button"
                                     class="btn btn-sm btn-outline-dark edit-rental-btn"
                                     title="Edit"
@@ -351,7 +370,7 @@ include 'includes/header.php';
                             <?php endif; ?>
                         </td>
                     </tr>
-                    <?php endwhile; ?>
+                    <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
@@ -366,6 +385,229 @@ include 'includes/header.php';
         <?php endif; ?>
     </div>
 </div>
+
+<?php foreach ($rental_rows as $rental): ?>
+<?php
+$rental_payments = $payments_by_rental[intval($rental['id'])] ?? [];
+$balance = floatval($rental['total_amount']) - floatval($rental['amount_paid']);
+$payment_class = '';
+switch($rental['payment_status']) {
+    case 'paid': $payment_class = 'bg-success'; break;
+    case 'partial': $payment_class = 'bg-warning'; break;
+    case 'pending': $payment_class = 'bg-danger'; break;
+}
+$status_class = '';
+switch($rental['status']) {
+    case 'active': $status_class = 'bg-primary'; break;
+    case 'completed': $status_class = 'bg-success'; break;
+    case 'cancelled': $status_class = 'bg-danger'; break;
+}
+?>
+<div class="modal fade" id="viewRentalModal<?php echo $rental['id']; ?>" tabindex="-1" aria-labelledby="viewRentalModalLabel<?php echo $rental['id']; ?>" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title" id="viewRentalModalLabel<?php echo $rental['id']; ?>">
+                    Rental #<?php echo str_pad($rental['id'], 6, '0', STR_PAD_LEFT); ?>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <h6 class="text-muted mb-3">Car Information</h6>
+                        <table class="table table-sm">
+                            <tr>
+                                <th width="40%">Brand & Model:</th>
+                                <td><?php echo $rental['brand'] . ' ' . $rental['model']; ?></td>
+                            </tr>
+                            <tr>
+                                <th>Plate Number:</th>
+                                <td><?php echo $rental['plate_number']; ?></td>
+                            </tr>
+                            <tr>
+                                <th>Color:</th>
+                                <td><?php echo $rental['color'] ?: 'N/A'; ?></td>
+                            </tr>
+                            <tr>
+                                <th>Daily Rate:</th>
+                                <td><?php echo formatCurrency($rental['daily_rate']); ?></td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <div class="col-md-6">
+                        <h6 class="text-muted mb-3">Customer Information</h6>
+                        <table class="table table-sm">
+                            <tr>
+                                <th width="40%">Name:</th>
+                                <td><?php echo $rental['customer_name']; ?></td>
+                            </tr>
+                            <tr>
+                                <th>Phone:</th>
+                                <td><?php echo $rental['customer_phone']; ?></td>
+                            </tr>
+                            <tr>
+                                <th>Email:</th>
+                                <td><?php echo $rental['customer_email'] ?: 'N/A'; ?></td>
+                            </tr>
+                            <tr>
+                                <th>License Number:</th>
+                                <td><?php echo $rental['license_number'] ?: 'N/A'; ?></td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <p class="mb-1 text-muted">Start Date</p>
+                        <h6><?php echo formatDate($rental['start_date']); ?></h6>
+                    </div>
+                    <div class="col-md-3">
+                        <p class="mb-1 text-muted">End Date</p>
+                        <h6><?php echo formatDate($rental['end_date']); ?></h6>
+                    </div>
+                    <div class="col-md-3">
+                        <p class="mb-1 text-muted">Duration</p>
+                        <h6><?php echo intval($rental['total_days']); ?> days</h6>
+                    </div>
+                    <div class="col-md-3">
+                        <p class="mb-1 text-muted">Status</p>
+                        <h6><span class="badge <?php echo $status_class; ?>"><?php echo ucfirst($rental['status']); ?></span></h6>
+                    </div>
+                    <div class="col-md-3">
+                        <p class="mb-1 text-muted">Billing Plan</p>
+                        <h6><?php echo rentalPlanLabel($rental['billing_plan'] ?? 'daily'); ?></h6>
+                    </div>
+                    <div class="col-md-3">
+                        <p class="mb-1 text-muted">Rate Used</p>
+                        <h6><?php echo formatCurrency($rental['rate_amount'] ?? $rental['daily_rate']); ?></h6>
+                    </div>
+                    <div class="col-md-3">
+                        <p class="mb-1 text-muted">Billable Units</p>
+                        <h6><?php echo intval($rental['billing_units'] ?? $rental['total_days']); ?></h6>
+                    </div>
+                    <div class="col-md-3">
+                        <p class="mb-1 text-muted">Payment Status</p>
+                        <h6><span class="badge <?php echo $payment_class; ?>"><?php echo ucfirst($rental['payment_status']); ?></span></h6>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <p class="mb-1 text-muted">Total Amount</p>
+                        <h5><?php echo formatCurrency($rental['total_amount']); ?></h5>
+                    </div>
+                    <div class="col-md-4">
+                        <p class="mb-1 text-muted">Amount Paid</p>
+                        <h5 class="text-success"><?php echo formatCurrency($rental['amount_paid']); ?></h5>
+                    </div>
+                    <div class="col-md-4">
+                        <p class="mb-1 text-muted">Balance</p>
+                        <h5 class="text-danger"><?php echo formatCurrency($balance); ?></h5>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="text-muted mb-0">Payment History</h6>
+                    <?php if ($rental['payment_status'] != 'paid'): ?>
+                    <a href="payment_add.php?rental_id=<?php echo $rental['id']; ?>" class="btn btn-sm btn-success">
+                        <i class="bi bi-plus-circle me-1"></i>Add Payment
+                    </a>
+                    <?php endif; ?>
+                </div>
+
+                <?php if (count($rental_payments) > 0): ?>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Amount</th>
+                                <th>Method</th>
+                                <th>Receipt</th>
+                                <th>Notes</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($rental_payments as $payment): ?>
+                            <tr>
+                                <td><?php echo formatDate($payment['payment_date']); ?></td>
+                                <td><strong><?php echo formatCurrency($payment['amount']); ?></strong></td>
+                                <td><?php echo $payment['payment_method'] ?: 'N/A'; ?></td>
+                                <td>
+                                    <?php if ($payment['receipt_photo']): ?>
+                                    <a href="uploads/receipts/<?php echo $payment['receipt_photo']; ?>" target="_blank" class="btn btn-sm btn-outline-info">
+                                        <i class="bi bi-file-earmark-image"></i> View
+                                    </a>
+                                    <?php else: ?>
+                                    <span class="text-muted">No receipt</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td><?php echo $payment['notes'] ? substr($payment['notes'], 0, 30) . (strlen($payment['notes']) > 30 ? '...' : '') : '-'; ?></td>
+                                <td>
+                                    <a href="payment_delete.php?id=<?php echo $payment['id']; ?>&rental_id=<?php echo $rental['id']; ?>"
+                                       class="btn btn-sm btn-outline-danger"
+                                       onclick="return confirm('Are you sure you want to delete this payment? The rental balance will be recalculated.');">
+                                        <i class="bi bi-trash"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?php else: ?>
+                <p class="text-muted mb-0">No payments recorded yet.</p>
+                <?php endif; ?>
+
+                <?php if ($rental['notes']): ?>
+                <hr>
+                <h6 class="text-muted mb-2">Notes</h6>
+                <p class="mb-0"><?php echo nl2br($rental['notes']); ?></p>
+                <?php endif; ?>
+
+                <?php if (isAdmin()): ?>
+                <hr>
+                <h6 class="text-muted mb-2">Agent/Company</h6>
+                <p class="mb-0"><?php echo $rental['company_name'] ?? $rental['agent_name']; ?></p>
+                <?php endif; ?>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button"
+                        class="btn btn-dark edit-rental-btn"
+                        data-bs-dismiss="modal"
+                        data-bs-toggle="modal"
+                        data-bs-target="#editRentalModal"
+                        data-rental-id="<?php echo $rental['id']; ?>"
+                        data-start-date="<?php echo $rental['start_date']; ?>"
+                        data-end-date="<?php echo $rental['end_date']; ?>"
+                        data-daily-rate="<?php echo $rental['daily_rate']; ?>"
+                        data-weekly-rate="<?php echo $rental['weekly_rate']; ?>"
+                        data-monthly-rate="<?php echo $rental['monthly_rate']; ?>"
+                        data-billing-plan="<?php echo $rental['billing_plan'] ?? 'daily'; ?>"
+                        data-rate-amount="<?php echo $rental['rate_amount'] ?? $rental['daily_rate']; ?>"
+                        data-billing-units="<?php echo $rental['billing_units'] ?? $rental['total_days']; ?>"
+                        data-total-days="<?php echo $rental['total_days']; ?>"
+                        data-total-amount="<?php echo $rental['total_amount']; ?>"
+                        data-status="<?php echo $rental['status']; ?>"
+                        data-notes="<?php echo htmlspecialchars($rental['notes'] ?? '', ENT_QUOTES); ?>">
+                    <i class="bi bi-pencil me-2"></i>Edit Rental
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endforeach; ?>
 
 <div class="modal fade" id="addRentalModal" tabindex="-1" aria-labelledby="addRentalModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -579,7 +821,7 @@ include 'includes/header.php';
 
                 <div class="alert alert-info">
                     <i class="bi bi-info-circle me-2"></i>
-                    <strong>Payment tracking:</strong> Use the "View Details" page to add and manage payments with receipt proof.
+                    <strong>Payment tracking:</strong> Use the rental details modal to add and manage payments with receipt proof.
                 </div>
 
                 <div class="mb-3">
@@ -751,6 +993,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const editRentalId = new URLSearchParams(window.location.search).get('edit');
     if (editRentalId) {
         document.querySelector(`.edit-rental-btn[data-rental-id="${editRentalId}"]`)?.click();
+    }
+
+    const viewRentalId = new URLSearchParams(window.location.search).get('view');
+    if (viewRentalId) {
+        const viewModal = document.getElementById(`viewRentalModal${viewRentalId}`);
+        if (viewModal) {
+            new bootstrap.Modal(viewModal).show();
+        }
     }
 
     <?php if ($open_modal): ?>

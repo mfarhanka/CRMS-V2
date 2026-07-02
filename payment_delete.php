@@ -29,7 +29,7 @@ $result = $payment_query->get_result();
 
 if ($result->num_rows === 0) {
     $_SESSION['error'] = "Payment not found or access denied.";
-    header("Location: rental_view.php?id=$rental_id");
+    header("Location: rentals.php?view=$rental_id");
     exit;
 }
 
@@ -77,6 +77,6 @@ if ($delete_query->execute()) {
     $_SESSION['error'] = "Failed to delete payment.";
 }
 
-header("Location: rental_view.php?id=$rental_id");
+header("Location: rentals.php?view=$rental_id");
 exit;
 ?>

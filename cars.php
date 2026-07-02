@@ -98,7 +98,7 @@ include 'includes/header.php';
                         </td>
                         <td>
                             <?php if ($car['active_rental_id']): ?>
-                            <a href="rental_view.php?id=<?php echo $car['active_rental_id']; ?>" class="text-decoration-none">
+                            <a href="rentals.php?view=<?php echo $car['active_rental_id']; ?>" class="text-decoration-none">
                                 <strong><?php echo $car['active_customer']; ?></strong><br>
                                 <small class="text-muted">Until <?php echo formatDate($car['active_end_date']); ?></small>
                             </a>
